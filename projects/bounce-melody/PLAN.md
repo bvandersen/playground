@@ -1,15 +1,18 @@
 # game2 — Godot bouncing-tone playground — plan
 
 > **Moved 2026-09-24** from the `oraclecardoftheday.com` repo (where it
-> lived at this same path) into this standalone `playground` repo. It
-> was always an unlisted demo unrelated to that site's actual product —
-> see "Hosting problem: Cloudflare Workers' 25 MiB asset limit" below for
-> why it needed a GitHub Pages deploy independent of that site's own
-> Cloudflare Workers deploy in the first place; moving it here removes
-> that site's build/deploy entirely from the picture rather than just
-> working around it. The rest of this file is unchanged from that repo
-> and some of its cross-references (`docs/game.md`, `CLAUDE.md`,
-> `npm run build`) point at things that only exist over there.
+> lived as `docs/game2.md`) into this standalone `playground` repo, then
+> reorganized into its own `projects/bounce-melody/` folder (see the
+> repo's `CLAUDE.md`). Path mapping from the notes below:
+> `game2/bounce-melody/` → `godot/`, `static/game2/bounce-melody/` →
+> `web/`, `scripts/game2-postexport.mjs` → `scripts/postexport.mjs`.
+> `scripts/game2-index.mjs` and `.github/workflows/game2-pages.yml` were
+> replaced by the repo-wide `scripts/build-pages.mjs` and
+> `.github/workflows/pages.yml`, which publish this demo at
+> `/playground/bounce-melody/` alongside every other project. Other
+> cross-references (`docs/game.md`, `CLAUDE.md`'s daily-deploy rule,
+> `npm run build`, `static/game/`) point at things that only exist in
+> the repo it came from.
 
 This is a standalone interactive demo, not tied to any site's product —
 originally the same "shipped but unlisted" convention as `static/game/`
@@ -171,7 +174,7 @@ every later item type becomes a special case bolted onto this one — the
 same standing rule `docs/game.md` set for `procedural-shuffle-
 playground.html`, restated for this engine:
 
-- **`ItemData`** (`game2/bounce-melody/scripts/item_data.gd`) — plain
+- **`ItemData`** (`godot/scripts/item_data.gd`) — plain
   data, no drawing, no physics: `type`, `position`, `velocity`, `color`,
   `radius`, `note` (a frequency in Hz), and a free-form `properties`
   dictionary for whatever a future property needs that today's fields
@@ -271,7 +274,7 @@ finished game):
 - [x] **Phase 0 — toolchain spike.** Prove the export pipeline works
       before building anything on top of it: a `Main.tscn` with one
       script that draws a single static circle, exported to
-      `static/game2/bounce-melody/` via `godot4 --headless --export-release
+      `web/` via `godot4 --headless --export-release
       "Web"`, served locally, loads with zero console errors in a
       headless-Chromium Playwright check. This is the same
       "resolve the unknown cheaply first" move `docs/game.md` made before
@@ -403,7 +406,7 @@ demo added to this folder, not a regression to chase.
 ## Verification approach
 
 Same methodology as `docs/game.md`'s demos, adapted for a compiled
-export instead of a static HTML file: serve `static/game2/bounce-melody/`
+export instead of a static HTML file: serve `web/`
 over a local `http.server`, drive it with headless Playwright
 (`/opt/pw-browsers/chromium`), and confirm zero page/console errors.
 Godot's Web export boots asynchronously (WASM fetch + instantiate), so
@@ -473,7 +476,7 @@ wrong tool for the job, so it wasn't done.
 
 **Fix**: `.github/workflows/game2-pages.yml`, a second, independent
 deploy — GitHub Pages, which has no comparable per-file limit — that
-publishes exactly one demo folder (`static/game2/bounce-melody/` today)
+publishes exactly one demo folder (`web/` today)
 as the Pages site's own root. This is deliberately *not* the same
 `static/game2/index.html` listing the real site would use: that index's
 own links are absolute (`/game2/<name>/`), which only resolve correctly

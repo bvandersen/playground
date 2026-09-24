@@ -1,6 +1,6 @@
 extends Node
 
-## The one place a new item *type* gets registered (docs/game2.md's
+## The one place a new item *type* gets registered (PLAN.md's
 ## "Extensibility architecture"). The add-item UI and Main only ever read
 ## this table -- neither hardcodes "sphere" or any other type name.
 ## Adding a second shape later is one more entry here, not a rewrite of
@@ -9,7 +9,7 @@ extends Node
 ## `behaviors` is a Callable returning a fresh Array of Behavior
 ## instances -- kept *in* the catalog entry, not switched on `type`
 ## elsewhere, so this dictionary really is the one place a type is
-## registered (see the Standing Rule in docs/game2.md: "never a new `if
+## registered (see the Standing Rule in PLAN.md: "never a new `if
 ## type == ...` anywhere else in the code").
 static func _sphere_behaviors() -> Array:
 	return [ConstantSpeedBounceBehavior.new(), ToneOnWallHitBehavior.new()]

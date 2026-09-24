@@ -3,7 +3,7 @@ class_name ConstantSpeedBounceBehavior
 
 ## The brief, verbatim: "reverses on hitting wall and it never loses
 ## momentum just constant speed." A plain kinematic mover, not a
-## RigidBody2D -- see docs/game2.md, "Constant-speed reflection, not
+## RigidBody2D -- see PLAN.md, "Constant-speed reflection, not
 ## RigidBody2D physics." Reflecting by negating exactly one axis of
 ## `velocity` leaves its magnitude (the speed) mathematically unchanged,
 ## forever, by construction -- there is nothing here that could drift.

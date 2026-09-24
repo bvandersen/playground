@@ -6,7 +6,7 @@ class_name ItemData
 ## plan (docs/game.md): a Behavior reads and writes this, an Item (the
 ## Node2D) only ever reads it to draw itself. `properties` is a free-form
 ## bag for whatever a future property needs that these named fields
-## don't already cover -- see docs/game2.md's extensibility architecture.
+## don't already cover -- see PLAN.md's extensibility architecture.
 
 var type: String = "sphere"
 var position: Vector2 = Vector2.ZERO

@@ -3,7 +3,7 @@ class_name UIRoot
 
 ## Every panel here *floats over* the canvas and can be hidden -- no
 ## panel ever docks in a way that shrinks the design/play area, so a
-## drag started anywhere on the canvas always works (see docs/game2.md,
+## drag started anywhere on the canvas always works (see PLAN.md,
 ## "Design-mode UI, built for a small phone screen first"). The root
 ## Control itself ignores mouse input (MOUSE_FILTER_IGNORE) so a tap that
 ## isn't on a visible panel falls straight through to Main's own

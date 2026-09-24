@@ -7,7 +7,7 @@ class_name Room
 ## SineSizeRoomBehavior oscillates `width`/`height` around during Play
 ## mode. Design mode always shows -- and collides against -- the base
 ## size, never the animated one, so what's being designed stays
-## predictable (see docs/game2.md, Phase 3).
+## predictable (see PLAN.md, Phase 3).
 
 var width: float = 480.0
 var height: float = 760.0

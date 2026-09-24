@@ -3,7 +3,7 @@
 ; parameters that go here are not all obvious.
 ;
 ; This file is hand-authored (no interactive Godot editor was used to
-; build this project — see docs/game2.md, "Procedurally-built scene
+; build this project — see PLAN.md, "Procedurally-built scene
 ; tree, not hand-authored .tscn files") — kept to the small set of keys
 ; that actually matter for a headless Web export.
 

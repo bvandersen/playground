@@ -2,7 +2,7 @@ extends RefCounted
 class_name Behavior
 
 ## The one extension point every item property/behavior grows through
-## (docs/game2.md's "Extensibility architecture"). A behavior never
+## (PLAN.md's "Extensibility architecture"). A behavior never
 ## reaches outside the `item`/`room` it's handed -- no globals beyond the
 ## ToneEngine/ItemCatalog autoloads every behavior is already allowed to
 ## use. Adding a new property later is a new Behavior subclass appended

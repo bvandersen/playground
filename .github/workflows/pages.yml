@@ -1,0 +1,41 @@
+# Publishes every project under projects/ to this repo's GitHub Pages
+# site: scripts/build-pages.mjs copies each projects/<name>/web/ folder to
+# _site/<name>/ and generates _site/index.html linking to all of them.
+# GitHub Pages has no per-file size limit comparable to Cloudflare
+# Workers' 25 MiB, so large Godot .wasm files are fine here.
+
+name: Pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/configure-pages@v5
+        with:
+          # Creates the Pages site via the API if it doesn't exist yet;
+          # harmless on every later run.
+          enablement: true
+      - run: node scripts/build-pages.mjs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
