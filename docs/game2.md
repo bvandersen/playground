@@ -224,7 +224,8 @@ the UI for the same screen space. The layout:
   of icon buttons) to never meaningfully cover a small screen.
 - **Tap an item (Design mode) → a compact property sheet slides up from
   the bottom**, sized to its content, not the full screen height — color
-  swatches, a direction dial + speed slider, a note/pitch slider,
+  swatches, velocity vector (x/y, speed, direction), key + note picker
+  and exact pitch,
   Duplicate and Delete buttons. Tapping anywhere on the canvas outside
   the selected item dismisses the sheet. Dragging the selected item works
   the whole time the sheet is up (the sheet only covers the bottom strip
@@ -399,6 +400,65 @@ Melody" project is a handful of small scripts; nearly all of that is the
 engine + GL-compatibility renderer + physics/audio modules baked into
 every Web export regardless of project size) — expected to repeat per
 demo added to this folder, not a regression to chase.
+
+### Scene reset, save/load, precise values, vectors, real notes
+
+Brief (verbatim):
+
+> Change game2 so the scene resets to the starting point when play
+> stopped. Make it the default but configurable so if turned off it does
+> like now where it does not reset but freeze in time when stopped. When
+> stated it should start from that state (either where reset or frozen
+> but if user changed anything then start from there obviously). Also
+> allow user to save their setup for later load again and an option to
+> auto save once saved. All sliders should be able to be set to a precise
+> value. Eg numeric input or something. The direction is just a slider.
+> Needs to be able to set as a vector that is displayed as a thin line
+> with an arrow going out from the item. Notes should be able to be set
+> from actual scales and to actual notes
+
+What was built:
+
+- **Scene state is one dictionary.** `Main.capture_state()` /
+  `Main.apply_state()` serialize the whole scene (room base size + sine
+  waves via `Room.to_dict/from_dict`, every item via `ItemData.to_dict/
+  from_dict`, the musical key). Pressing Play snapshots it (plus the
+  room's live animation phase and the selection); Stop either applies
+  that snapshot back (**"Reset scene on stop"**, on by default) or leaves
+  everything frozen mid-flight, room size/phase included, so the next
+  Play continues from there. Either way, Play always starts from whatever
+  is on screen, including any edits made after stopping.
+- **Save / Load** (top strip): named setups as JSON under
+  `user://saves/` (`scene_store.gd`). On the Web export `user://` is
+  IndexedDB, so saves survive a reload in the same browser. After a save
+  or load, **"Auto-save changes to …"** writes every design edit back to
+  that setup (debounced 0.8s, never mid-Play). With auto-save on, the page
+  reopens that setup on the next visit. Settings (reset-on-stop,
+  auto-save, current setup) persist in `user://settings.json`.
+- **Every slider has a typed numeric box** (`ui/number_field.gd`, a
+  slider + `SpinBox` kept in sync). The Web export's experimental virtual
+  keyboard is enabled so the boxes are typeable on phones.
+- **Velocity is a vector.** In Design mode every item draws a thin arrow
+  from its edge along its velocity (length proportional to speed,
+  `Item.VECTOR_SCALE`); the selected item's arrow tip has a handle that
+  drags direction and speed together. The sheet also takes exact `x`/`y`
+  components, or speed + direction in degrees (0° = right, clockwise,
+  since y points down).
+- **Real notes and scales** (`music_theory.gd`, 12-TET, A4 = 440 Hz): a
+  scene-wide key (root + major/minor/modes/pentatonic/blues/…), a note
+  picker listing only that scale's notes C2–C7, `<`/`>` to step through
+  the scale (previewing the tone), and the exact Hz box still there for
+  off-scale pitches (shown as e.g. `~A4 +20c`).
+
+Verified: a headless GDScript run (reset restores exact position/
+velocity, freeze keeps position and room phase, edits after a freeze
+become the next start, save → modify → load round-trip, auto-save fires,
+vector-tip ↔ velocity round-trip), then the exported build in headless
+Chromium at 480×800: arrow-tip drag, typing an exact speed, stepping a
+note, saving, enabling auto-save, turning reset off, Play → Stop freezes,
+and a page reload brings back the auto-saved frozen scene. The default
+font has no `▶`/`■` glyphs (they rendered as boxes before), so buttons
+now use plain text.
 
 ## Verification approach
 
