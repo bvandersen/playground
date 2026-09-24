@@ -1,0 +1,9 @@
+# game2 (docs/game2.md): Godot's per-project import/cache directory,
+# regenerated from source on demand -- the same role node_modules/ plays.
+# The exported HTML5 build under static/game2/ IS committed (nothing here
+# can regenerate it), only the Godot source's own cache is excluded here.
+game2/*/.godot/
+
+# generated game2-demo index — always rebuilt by scripts/game2-index.mjs,
+# never hand-edited
+/static/game2/index.html
