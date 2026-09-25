@@ -35,6 +35,8 @@ Starter prompt for a new session:
 - [ ] Phase 7 — Enigma Scroll as a reward system, streaks, notifications
 - [ ] Phase 8 — Android + iOS builds
 - [ ] Phase 9 — Polish, safety, onboarding
+- [ ] Phase 10 — Content at scale: recipe generator, validator, library
+- [ ] Phase 11 — Paid tier: in-app purchase, entitlement, paywall moments
 
 ## Original brief (verbatim, abridged only where marked)
 
@@ -142,9 +144,14 @@ it is **not** added to the Pages workflow until someone asks.
   random 64-bit value created on first launch and saved. Same install,
   same day → same rite no matter how often the app is reopened; two
   phones differ.
-- Candidates = rites this device can perform (sensor + permission check,
-  `Ritual.requirements`), minus the last 7 drawn. Weighted pick
-  (`Ritual.weight`, default 1). No reroll, no preview of the name.
+- Candidates = recipes this device can perform (sensor + permission
+  check, `requires`) and the user is entitled to (`tier`), minus every
+  recipe already seen (until the pool is exhausted) and minus any recipe
+  whose **engine** ran in the last 3 days. Weighted pick (`weight`,
+  default 1). No reroll, no preview of the name.
+- The first 7 days are not random: a curated opening sequence of the
+  strongest free rites, one per sense (breath, touch, sound, motion, …),
+  so the first week is the hook. Random draw from day 8.
 - After completion (or abandonment past the payoff point) the day is
   **sealed**; reopening shows only the sealed screen until 04:00.
 - Clock tampering is ignored for the demo (note for later: store the
@@ -162,6 +169,64 @@ of 12 glyphs; a code is a sequence of 4 glyphs. Codes:
 - Later (Phase 7): codes are *earned* — fragments revealed by streaks /
   depth, and a rite opened by an earned code is a "second rite" that
   doesn't count toward the day. Wrong codes do nothing and say nothing.
+
+### Free and paid: rites are data (engines × recipes)
+
+(Added after the plan was first written, from the user's follow-up:
+"get people hooked with free version with some rituals and then add
+hundreds or thousands of mini rituals to paid version".)
+
+Thousands of rites can't be thousands of hand-written scripts. So a rite
+is split in two:
+
+- **Engine** — code, one per mechanic. The 23 archetypes are the first
+  23 engines; new engines are added rarely (target ~40). Each exposes
+  many knobs: timings, shapes, palette, audio voice, thresholds, which
+  sensor gates it, copy slots. An engine may also be **chained** with one
+  other ("compound rite": e.g. stillness → glyph, match → oracle), which
+  multiplies variety without new code.
+- **Recipe** — data, one JSON object (~1–3 KB): `id`, `engine` (or
+  `chain`), `params`, `lines`, `title`, `tier` (`free` | `deep`),
+  `tags` (dawn, dusk, body, sound, …), `requires`, `weight`, `reviewed`.
+  What the user experiences as "a rite" is one recipe. 2,000 recipes are
+  ~5 MB and ship inside the app — no server.
+
+Variety has to be real, not reskins: a recipe must change what the user
+*does* or *feels* (rhythm, duration, sense, payoff line), not just its
+colour. The draw's 3-day engine cooldown backs this up.
+
+**Authoring at scale** (Phase 10): the brief's system prompt becomes the
+generator prompt. An offline, dev-only tool asks the Claude API for
+recipes against each engine's JSON schema; a validator checks schema,
+tone rules (banned-word list, line length), requirements, and runs each
+recipe headless for a smoke test; a human curates in an in-app library
+viewer and sets `reviewed: true`. Only reviewed recipes ship. Nothing is
+generated on the phone at runtime (privacy, cost, and tone control).
+
+**Tiers:**
+
+- **Free**: the 23 canonical recipes (the brief's own versions) plus
+  ~20 more — enough that a free user rarely meets a repeat in the first
+  month. One rite per day, exactly as described above.
+- **Paid** (in-world name "the Deep Rites", placeholder): the whole
+  library, growing with every app update. *Still one rite per day* —
+  the scarcity is the hook and is not for sale. Paid adds: a second,
+  evening slot (dusk to 04:00), the Enigma Scroll's earned codes beyond
+  the first, and the full Reliquary (stones, crystals, gems).
+- **Model (recommendation, user to confirm before Phase 11)**:
+  subscription, monthly + yearly, with a one-off lifetime option; a
+  7-day trial offered only after day ~10, once the habit exists.
+  Ongoing new recipes are what justify a subscription.
+- **Paywall moments are in-world but honest.** On some days a free user
+  is shown that a deep rite was drawn ("A deeper rite was drawn for you
+  today. It is sealed.") and then gets their free rite anyway — never a
+  blocked day. The purchase sheet itself is plain: price, period,
+  renewal terms, restore, cancel — Apple and Google both require it, and
+  dark patterns get apps rejected.
+- Entitlement is checked on-device against the store (Play Billing /
+  StoreKit); no own backend in v1; piracy is accepted. Downloadable
+  recipe packs (content without an app update) would need hosting and
+  network code — deferred, not planned.
 
 ### Tone rules for all copy
 
@@ -182,7 +247,8 @@ game3/vigil/
     main.gd              screen router: Threshold → Rite → Seal; Scroll overlay
     core/
       ritual.gd          class_name Ritual (base, see contract)
-      registry.gd        autoload Registry: id → scene script, metadata
+      registry.gd        autoload Registry: loads recipe packs, engine id → script
+      entitlement.gd     autoload: free | deep (Phase 11; returns free until then)
       daily.gd           autoload Daily: ritual day, seed, draw, seal
       save.gd            autoload Save: user://vigil.json, versioned
       scroll_codes.gd    code → rite id table
@@ -197,33 +263,46 @@ game3/vigil/
       seal.gd            after a rite: closing line, "return" hint
       scroll.gd          the Enigma Scroll
       reliquary.gd       Phase 5: stones and crystals kept
-    rites/
-      r01_unblinking_eye.gd … r23_stone_mining.gd  (one file per rite)
+    engines/
+      e01_unblinking_eye.gd … e23_stone_mining.gd  (one file per engine)
   data/
-    lines/               copy pools (JSON), keyed by rite + moment
+    rites/               recipe packs: free_core.json, deep_001.json, …
+    schema/              recipe.schema.json + one params schema per engine
+    lines/               shared copy pools (JSON), keyed by engine + moment
     stones.json          Phase 5
   fonts/                 one serif (OFL), one mono; nothing else
   tools/                 headless test runners (not exported)
 ```
 
-### Ritual contract (`scripts/core/ritual.gd`)
+### Engine contract (`scripts/core/ritual.gd`)
 
 ```gdscript
-class_name Ritual extends Node2D
-# metadata, read by Registry without instancing the rite
-static func meta() -> Dictionary:
-    return {id = "r17", title = "The Sigil of Breath",
-            requires = [],            # e.g. ["accel", "mic", "camera"]
-            weight = 1.0, minutes = 2}
+class_name Ritual extends Node2D       # base of every engine
+const ENGINE_ID := ""                  # e.g. "breath_sigil"
+static func defaults() -> Dictionary: return {}   # every knob + default
 signal finished(outcome: String)       # "done" | "left"
+func setup(recipe: Dictionary) -> void: pass      # params merged over defaults
 func begin() -> void: pass             # called once, after fade-in
 func payoff_reached() -> bool: return false  # past this, leaving still seals
 ```
 
-Rites never touch `Save`, `Daily` or screens directly; they get
-`Senses`, `Synth`, `Haptics`, `Words` and `Lines.pick(rite_id, key)`
-only. That keeps each rite one self-contained file a session can write
-without reading the others.
+A recipe (in `data/rites/*.json`):
+
+```json
+{"id": "free.breath.003", "engine": "breath_sigil", "tier": "free",
+ "title": "The Sigil of Breath", "requires": [], "weight": 1,
+ "tags": ["breath", "dawn"], "reviewed": true,
+ "params": {"shape": "heptagram", "rhythm": [3, 7, 2, 5], "cycles": 6},
+ "lines": {"payoff": null}}
+```
+
+Engines never touch `Save`, `Daily`, `Entitlement` or screens directly;
+they get `Senses`, `Synth`, `Haptics`, `Words` and the recipe (its
+`lines`, falling back to `Lines.pick(engine_id, key)`) only. That keeps
+each engine one self-contained file a session can write without reading
+the others. Every engine ships with its canonical recipe (the brief's
+version, `tier: free`) plus at least 2 variant recipes that prove its
+knobs actually change the experience.
 
 Every rite plan below follows the brief's output standard:
 **Setup** (first 5 s), **Mechanics** (sensors + action), **Payoff**.
@@ -231,9 +310,10 @@ Every rite plan below follows the brief's output standard:
 ### Testing without a phone
 
 `tools/run_rite.gd`: `godot --headless --path game3/vigil -s
-tools/run_rite.gd -- r17 --fake "tilt=0,0;still=1"` instances one rite
-with scripted fake senses, steps it for N seconds, and prints its
-`finished` outcome — used to smoke-test every rite. Parse check for the
+tools/run_rite.gd -- free.breath.001 --fake "tilt=0,0;still=1"`
+instances one recipe's engine with scripted fake senses, steps it for N
+seconds, and prints its `finished` outcome — used to smoke-test every
+recipe. Parse check for the
 whole project: `godot --headless --editor --quit --path game3/vigil`
 and fail on any `ERROR` line (same trick as game2-pages.yml). Visual
 check: Web export + headless Chromium screenshot (as game1 did).
@@ -242,21 +322,25 @@ check: Web export + headless Chromium screenshot (as game1 did).
 
 ## Phase 0 — Scaffold, daily draw, threshold screens, first rite
 
-Goal: open the app, see the threshold, get today's rite (always #17
-until more exist), perform it, see the seal; reopen → still sealed.
+Goal: open the app, see the threshold, get today's rite (always a
+breath-sigil recipe until more exist), perform it, see the seal; reopen → still sealed.
 
 1. `game3/vigil/` with `project.godot` (4.7, portrait 480×800,
    compatibility renderer, near-black clear colour `#07070a`,
    `quit_on_go_back=false`), `Main.tscn`, `.gitignore` entry
    `game3/*/.godot/`.
-2. Autoloads `Save`, `Daily`, `Registry`; `Ritual` base class;
-   `scroll_codes.gd`.
+2. Autoloads `Save`, `Daily`, `Registry`, `Entitlement` (stub: always
+   `free`); `Ritual` base class; `data/schema/recipe.schema.json`;
+   recipe-pack loader; `scroll_codes.gd` (dev codes map to recipe ids).
 3. `threshold.gd`: a slowly breathing sigil (drawn with `draw_*`, not a
    texture), one line from `data/lines/threshold.json` chosen by
    time-of-day (dawn / day / dusk / night). Tap → fade to black 1.5 s →
    rite. Sealed day → `seal.gd` directly.
 4. `seal.gd`: closing line, the sigil dimmed, nothing to press.
-5. **r17 The Sigil of Breath** (needs no sensors — see its entry).
+5. **r17 The Sigil of Breath** as engine `breath_sigil` + 3 recipes
+   (canonical free, one free variant, one `deep` variant that the draw
+   must skip while entitlement is free) — proves the engine/recipe split
+   and the tier filter from day one.
 6. Minimal Enigma Scroll: 7 s hold on the sigil, 12-glyph ring, enter 4,
    dev code opens that rite unsealed.
 7. `tools/run_rite.gd` + a `tools/check.sh` that runs the parse check.
@@ -267,7 +351,8 @@ until more exist), perform it, see the seal; reopen → still sealed.
    `CameraServer` list a feed on 4.7.2 Android? Only if a device/emulator
    is reachable; otherwise note "unverified" and move on.
 
-Done when: headless boot clean; `run_rite r17` prints `done`; a
+Done when: headless boot clean; `run_rite free.breath.001` prints
+`done`; a draw over 30 simulated days never returns the deep recipe; a
 screenshot of threshold and seal exists in the Done notes' commit.
 
 ## Phase 1 — Kit: synth audio, text/shader effects, Senses layer
@@ -366,7 +451,8 @@ loop. Split into sessions:
   as glyphs, then gone — the user must remember or write it down; the
   scroll never lists codes).
 - Earned code opens a specific rite as a second rite of the day; each
-  earned code works once per ritual day.
+  earned code works once per ritual day. Free users get the depth-7
+  fragment as a taste; later fragments need the paid tier.
 - Missed days break the streak silently; nothing punitive is shown.
 - Optional local notification at a user-chosen hour ("It is waiting.").
   Needs a notification plugin on both platforms — skip if Phase 6 didn't
@@ -389,7 +475,8 @@ loop. Split into sessions:
   `NSMicrophoneUsageDescription`, `NSCameraUsageDescription`,
   `NSLocationWhenInUseUsageDescription`, `NSMotionUsageDescription`, all
   in the app's voice but plainly honest about the purpose.
-- Privacy: nothing leaves the device (no network code at all); camera
+- Privacy: nothing leaves the device (no network code of our own; from
+  Phase 11 the store's billing library talks to Google/Apple); camera
   and mic data are never stored beyond the rite (#3's 3-second clip lives
   in memory only). Store listing + privacy page like game1's.
 
@@ -405,12 +492,56 @@ loop. Split into sessions:
   haptic tuning on a real device, reduced-motion respects OS setting
   where Godot exposes it, localisation hooks (all copy already in data).
 
+## Phase 10 — Content at scale: recipe generator, validator, library
+
+Needs Phases 0–1 and several engines done (it's pointless before ~10
+engines exist). Can run in parallel with Phases 5–9 after that.
+
+- `tools/recipes/` (Node or Python, dev-only, never exported): `gen`
+  sends the brief's system prompt + tone rules + one engine's params
+  schema + 3 reviewed examples to the Claude API and asks for N new
+  recipes as JSON; `validate` checks schema, banned words, line lengths,
+  duplicate/near-duplicate params, and runs each headless via
+  `run_rite`; output goes to `data/rites/_inbox/`. API key from an env
+  var, never committed.
+- In-app **library viewer** (dev build only, opened by a dev scroll
+  code): flip through inbox recipes, play any, mark keep/reject, which
+  writes `reviewed` and moves it into a pack.
+- Target for the first paid launch: ~300 reviewed deep recipes over the
+  engines that exist, plus ~20 compound chains. "Thousands" comes from
+  later packs in app updates.
+- Coverage report: recipes per engine, per tag, per sensor, so the
+  library doesn't drift toward whatever engine generates easiest.
+
+## Phase 11 — Paid tier: in-app purchase, entitlement, paywall moments
+
+Needs Phase 8 (real store builds). Confirm the pricing model first
+(Open questions).
+
+- Android: Godot's official Google Play Billing plugin
+  (`godot-sdk-integrations/godot-google-play-billing`); iOS: a StoreKit
+  plugin (check which one is maintained for Godot 4.7 at the time —
+  `godot-ios-plugins`' in-app store or a StoreKit 2 GDExtension).
+  Wrap both behind `Entitlement` so nothing else knows which store.
+- Products: `deep_monthly`, `deep_yearly` (subscriptions, one group),
+  `deep_lifetime` (non-consumable). Restore purchases in the scroll.
+- `Entitlement`: cache last known state in `Save` so it works offline;
+  re-check on launch; grace period on lapse (deep rites already in the
+  Reliquary stay).
+- Paywall moments as described under "Free and paid"; the offer screen
+  appears only after day 10 and at most once a week, never mid-rite.
+- Store listing: free app with in-app purchases; privacy labels updated
+  for purchase data handled by the store.
+
 ---
 
 ## The rites
 
-Id, source archetype, requirements, phase. Quoted lines are the brief's
-own and are used verbatim. Additional copy goes in `data/lines/`.
+Each entry is one **engine** and its canonical free recipe (the brief's
+version). Id, source archetype, requirements, phase. Quoted lines are
+the brief's own and are used verbatim. Additional copy goes in
+`data/lines/`; the obvious knobs for variant recipes are the timings,
+shapes, sounds and payoff lines named in each entry.
 
 ### r01 The Unblinking Eye — `touch` (+`gyro` in Phase 3) — P2
 - **Setup:** black; a single iris fades in, pupil dilating slowly; a
@@ -624,7 +755,11 @@ stone to polish (touch speed + coverage raise its shine shader).
 - Whisper / voice lines: recorded voice actor, TTS (e.g. ElevenLabs,
   generated once and committed as assets), or none — before Phase 3's r09.
 - What the Enigma Scroll finally reveals at depth 108 — Phase 7.
-- Monetisation (none planned; any ads would break the tone) — Phase 8.
+- Pricing model: subscription (monthly + yearly + lifetime, as
+  recommended), one-off unlock, or both; prices; trial length. No ads —
+  they would break the tone. Before Phase 11.
+- Is an evening second slot the right paid perk, or should paid stay
+  strictly one rite a day? Before Phase 11.
 
 ## Done notes
 
