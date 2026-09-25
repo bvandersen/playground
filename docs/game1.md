@@ -269,6 +269,126 @@ colours and coal. Graphics-quality tiers were considered and not added:
 the cost was overhead, not detail, so tiers would have traded visuals
 for a problem that's gone.
 
+## Plan: Android build and Google Play release (not started)
+
+Goal: ship Rail Yard as an Android app on Google Play, built headlessly
+from this same project (no interactive editor, as with the Web export).
+Google's numbers below (target API level, tester counts) change often,
+so re-check them in Play Console before relying on them.
+
+### Status
+
+- [ ] 1. Toolchain in the build environment
+- [ ] 2. Android export preset + icons in the project
+- [ ] 3. Signed AAB builds headlessly (script in `scripts/`)
+- [ ] 4. Tested on a real phone (touch, pinch, save/load, frame rate)
+- [ ] 5. Play Console: app created, store listing, policies
+- [ ] 6. Internal testing, then closed test (12+ testers, 14 days)
+- [ ] 7. Production release
+
+### 1. Toolchain
+
+- Godot 4.3 **Android** export templates. Only the two `web_nothreads_*`
+  templates are installed so far (`~/.local/share/godot/export_templates/4.3.stable/`);
+  the full `Godot_v4.3-stable_export_templates.tpz` contains the
+  Android ones (`android_release.apk`, `android_debug.apk`, `android_source.zip`).
+- JDK 17 (what Godot 4.3's Gradle template is built against). The cloud
+  container has only Java 21 at `/usr/lib/jvm/java-21-openjdk-amd64`;
+  install 17 rather than find out whether the template's Gradle copes.
+- Android SDK via `cmdline-tools`: `platform-tools`, `build-tools`, and
+  the `platforms;android-<target>` for the target API below. Point Godot
+  at it with the editor settings `export/android/android_sdk_path` and
+  `export/android/java_sdk_path` (for a headless run, write them into
+  `~/.config/godot/editor_settings-4.3.tres` or pass them as env).
+- Check the proxy lets Gradle reach `dl.google.com` and Maven Central;
+  if not, the build has to run on a local machine.
+
+### 2. Project changes
+
+- Add `[preset.1]` "Android" to `export_presets.cfg` (keep "Web" as
+  preset 0 so the Web command is unchanged):
+  - `package/unique_name="com.<you>.railyard"`, `package/name="Rail Yard"`
+  - `version/code` (an integer that goes up with **every** upload) and
+    `version/name`
+  - `gradle_build/use_gradle_build=true`: the Play Store only accepts
+    AAB, and a custom target SDK needs a Gradle build. So also
+    `gradle_build/export_format=1` (AAB) and install the build template
+    (`android/build/` from `android_source.zip`; decide whether to commit
+    it or unpack it in the build script, leaning towards the script)
+  - `gradle_build/target_sdk`: whatever Google requires now. That was
+    API 35 (Android 15) for new apps from Aug 2025 and it rises every
+    August. Godot 4.3 defaults to 34, which is too low. `min_sdk` stays
+    at Godot's default.
+  - `architectures/arm64-v8a=true` (and `armeabi-v7a` for old phones);
+    Play needs 64-bit.
+  - `screen/orientation`: portrait (already `window/handheld/orientation`
+    in `project.godot`)
+  - No permissions needed: no internet, no storage (saves go to
+    `user://`, which is app-private on Android).
+- Icons, drawn procedurally to match the rest of the game (e.g. a
+  script that renders `IconArt`'s steam engine on a track loop to PNG
+  with `godot4 --headless`), rather than hand-made art:
+  - `launcher_icons/main_192x192`
+  - `launcher_icons/adaptive_foreground_432x432` and
+    `adaptive_background_432x432` (keep the picture inside the central
+    ~66% safe zone of the foreground)
+  - Play listing: a 512×512 icon and a 1024×500 feature graphic
+- Code: probably nothing. The Web-only bits (`JavaScriptBridge` in
+  `ui_root.gd`) are behind `OS.has_feature("web")`, and touch/pinch uses
+  the same `InputEventScreenTouch` path. Worth checking on the phone:
+  the Android back button (`NOTIFICATION_WM_GO_BACK_REQUEST`: close an
+  open sheet, or leave Play, before quitting the app), and the insets
+  for the notch/status bar (`DisplayServer.get_display_safe_area()`)
+  so the top strip isn't under the camera cutout.
+
+### 3. Signing and build
+
+- Upload key: `keytool -genkeypair -v -keystore railyard-upload.jks
+  -alias upload -keyalg RSA -keysize 2048 -validity 10000`. **Never
+  commit it.** Keep it and its password somewhere backed up, and pass
+  them to Godot via env (`GODOT_ANDROID_KEYSTORE_RELEASE_PATH`,
+  `..._USER`, `..._PASSWORD`). Enrol in Play App Signing so Google holds
+  the real app key and a lost upload key can be reset.
+- Build: `godot4 --headless --path game1/rail-yard --export-release
+  "Android" <out>/rail-yard.aab`. Put this in a `scripts/` build script
+  (unpack the build template, bump `version/code`, export), and don't
+  commit the `.aab` itself (unlike the Web build, which is committed).
+- Check `project.godot`'s `config/name` and add `config/icon`.
+
+### 4. Real-phone test
+
+The first real touch test of this game (see "Not verified" above):
+drawing, the Smooth brush, pinch-zoom, dragging trains, save/load and
+auto-save surviving the app being killed, and frame rate with several
+long trains on a low-end phone. Sideload with `adb install` using an
+APK export of the same preset, or go through Play's internal testing
+track.
+
+### 5. Play Console
+
+- Developer account: $25 once plus ID verification.
+- Create the app; store listing: title, short description (80 chars),
+  full description, icon, feature graphic, 2+ phone screenshots
+  (the headless Chromium screenshot setup used for the Web build works
+  for these too).
+- Privacy policy URL (required): the app collects nothing, so a short
+  page saying so. It could live on the same GitHub Pages site.
+- Content rating questionnaire (IARC); Data safety form: no data
+  collected or shared.
+- Target audience: the UI is built for children who can't read yet, so
+  the **Families policy** applies: kid-appropriate content, no
+  non-certified ads/analytics SDKs (there are none), and the privacy
+  policy and listing have to reflect a child audience.
+
+### 6–7. Testing tracks and release
+
+- Upload to **Internal testing** first (fast, up to 100 testers).
+- New personal developer accounts must run a **closed test with at
+  least 12 opted-in testers for 14 days in a row** before they can apply
+  for production access.
+- Then promote to **Production** and submit; review usually takes a few
+  days. Every later update needs a higher `version/code`.
+
 ## Ideas for later
 
 Signals/blocks instead of look-ahead braking, turntables, uncoupling
