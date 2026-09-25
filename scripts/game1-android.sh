@@ -84,8 +84,14 @@ printf 'export/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "
 # --- A throwaway copy of the project ---------------------------------------
 rm -rf "$PROJECT"
 mkdir -p "$PROJECT"
-tar -C game1/rail-yard --exclude=.godot --exclude=android -cf - . | tar -C "$PROJECT" -xf -
+# (Anchored excludes: a bare "android" would also drop art/android/.)
+tar -C game1/rail-yard --exclude=./.godot --exclude=./android -cf - . | tar -C "$PROJECT" -xf -
 PRESETS="$PROJECT/export_presets.cfg"
+# A missing launcher icon only logs an error and falls back to Godot's
+# default icon, so check them up front.
+for icon in $(sed -n 's/^launcher_icons\/[a-z_0-9x]*="res:\/\/\(.*\)"$/\1/p' "$PRESETS"); do
+  [[ -f "$PROJECT/$icon" ]] || { echo "Missing launcher icon: $icon" >&2; exit 1; }
+done
 if [[ -n "${VERSION_CODE:-}" ]]; then
   sed -i "s/^version\/code=.*/version\/code=${VERSION_CODE}/" "$PRESETS"
 fi
