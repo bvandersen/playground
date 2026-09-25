@@ -338,7 +338,7 @@ Every recipe carries one `register`:
 | `tender` | warm, loving, consoling | r24 Four Warmths, gentle stone messages |
 | `folk` | playful, homely, old-world, a little funny | r25 São Longuinho |
 | `oracle` | divinatory, a message or a sign | r05, r12, r19, r23 |
-| `teaching` | learn a real practice to keep (see below) | r24, r25, any `practice` recipe |
+| `teaching` | learn a real practice to keep (see below) | r24, r25, r26, any `practice` recipe |
 
 A recipe can have a second `register` for the draw's balance (r24 is
 `tender` + `teaching`). Style (the look) should follow the register:
@@ -962,6 +962,34 @@ English line under it.)
 - The debt-paying is outside the daily draw: it can happen on any day,
   any number of times.
 
+### r26 The Unwinding — `touch` — P12 · stark + teaching
+Replay the last 24 hours **backwards**, and reframe what you would do
+differently. (Close to Rudolf Steiner's *Rückschau*, the evening
+"backward review", and the Ignatian examen; credit in one line.) Draw
+prefers it after 17:00; opened in the morning it runs "since yesterday
+morning" instead.
+- **Setup:** a large clock face on a dark ground; the hand is at *now*
+  and begins to turn **backwards**, with a slowed, reversed tick (tone
+  library + reversed-envelope synth); "Go back with it."
+- **Mechanics:** the user scrubs the hand backwards with a finger
+  (it can't go forward). Soft prompts at rough anchors as the hand
+  passes them ("An hour ago. Where were you?", "This afternoon.",
+  "Midday.", "This morning, as you woke.", "Yesterday, at this hour.").
+  Tapping the dial **marks a moment** that snags. At each mark, three
+  short steps: *see it from outside, as if watching someone else* (the
+  screen desaturates) → *what would you do differently?* (optional
+  one-line typing, or just think) → *play it again, the new way* (the
+  hand runs forward over just that moment, warm, 10 s — the only time
+  it goes forward). Then back to unwinding. Up to 3 marks; scrubbing to
+  24 h ends it.
+- **Payoff:** the hand reaches this hour yesterday and stops; the clock
+  fades to one line: "The day is unwound. What was done, you have now
+  seen twice." Then the Keep offer. Nothing typed is saved (a kept
+  practice in the Book can optionally keep a private night-by-night
+  list, only if the user turns it on).
+- Tone: reframing, not self-blame — no "mistakes", no "failures" in the
+  copy; the questions are about what you'd *do*, not who you are.
+
 ---
 
 ## Phase 12 — Teachings: the practice engine, São Longuinho, the Book
@@ -976,9 +1004,10 @@ after that — it doesn't block or depend on the paid tier.
    promises; threshold shows the Book mark and any open promise.
 3. `register` field in the recipe schema, the draw rules from "The
    daily draw", and a `register` column in the Registry validation.
-4. r24 The Four Warmths as a `practice` recipe (plus the tender look)
-   and r25 São Longuinho as its own engine (`longuinho`) with
-   `Senses.jumps()`.
+4. r24 The Four Warmths as a `practice` recipe (plus the tender look),
+   r25 São Longuinho as its own engine (`longuinho`) with
+   `Senses.jumps()`, and r26 The Unwinding as its own engine
+   (`unwinding`: the backward-scrub clock and mark/replay loop).
 5. 5–10 more `practice` recipes across registers (a breath method, 5-4-3-2-1
    grounding, Hoʻoponopono, an evening examen, writing-and-burning a
    worry), so the draw's register balance has something to balance.
