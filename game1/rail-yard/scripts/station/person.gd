@@ -31,6 +31,10 @@ var fading := 0.0 # +1 fading in, -1 fading out
 func _init(l: Dictionary = {}) -> void:
 	look = l if not l.is_empty() else PersonArt.random_look()
 	speed = WALK_SPEED * (1.2 if look["kid"] else randf_range(0.85, 1.1))
+	if look.get("wheelchair", false):
+		speed *= 0.9
+	elif look.get("bike", false):
+		speed *= 0.95
 
 ## Walks along `path`; true once there's nowhere left to go.
 func step(delta: float) -> bool:
