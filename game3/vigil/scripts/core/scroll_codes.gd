@@ -11,6 +11,9 @@ const DEV := {
 	"0-6-3-9": "free.breath.001",
 	"0-6-3-10": "free.breath.002",
 	"0-6-3-11": "deep.breath.001",
+	"0-6-4-9": "free.glyph.001",
+	"0-6-4-10": "free.glyph.002",
+	"0-6-4-11": "deep.glyph.001",
 }
 
 static func key(glyphs: Array) -> String:

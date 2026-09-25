@@ -35,6 +35,37 @@
 				"hold_at_end": 9.0
 			},
 			"lines": {}
+		},
+		{
+			"id": "free.glyph.001",
+			"engine": "glyph_moment",
+			"tier": "free",
+			"title": "The Glyph of the Moment",
+			"requires": ["touch"],
+			"weight": 1,
+			"tags": ["sight", "secret"],
+			"reviewed": true,
+			"params": {},
+			"lines": {}
+		},
+		{
+			"id": "free.glyph.002",
+			"engine": "glyph_moment",
+			"tier": "free",
+			"title": "The Mirrored Mark",
+			"requires": ["touch"],
+			"weight": 1,
+			"tags": ["sight", "secret", "dusk"],
+			"reviewed": true,
+			"params": {
+				"symmetry": "mirror",
+				"strokes": [2, 3],
+				"arc_chance": 0.5,
+				"show_s": 5.0,
+				"dissolve_s": 4.0,
+				"color": "#d8a878"
+			},
+			"lines": {"payoff": "It had two halves, like you. Both are gone now. Keep the secret."}
 		}
 	]
 }

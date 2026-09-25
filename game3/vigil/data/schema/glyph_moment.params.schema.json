@@ -1,0 +1,28 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "vigil/glyph_moment.params.schema.json",
+	"title": "glyph_moment params (r05 The Glyph of the Moment)",
+	"type": "object",
+	"additionalProperties": false,
+	"properties": {
+		"lattice": {"type": "integer", "minimum": 3, "maximum": 9, "description": "Glyph strokes run between the points of an n x n lattice."},
+		"strokes": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 2, "maxItems": 2, "description": "[min, max] strokes before symmetry."},
+		"steps": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 2, "maxItems": 2, "description": "[min, max] moves per stroke."},
+		"arc_chance": {"type": "number", "minimum": 0, "maximum": 1, "description": "Chance a move is an arc rather than a straight line."},
+		"symmetry": {"enum": ["none", "mirror", "rotate"], "description": "mirror: left-right; rotate: four-fold."},
+		"min_nodes": {"type": "integer", "minimum": 1, "description": "Too simple below this many distinct lattice points."},
+		"min_moves": {"type": "integer", "minimum": 1, "description": "Too simple below this many moves (after symmetry)."},
+		"size": {"type": "number", "minimum": 0.1, "maximum": 1, "description": "Glyph side as a fraction of the screen's short side."},
+		"look_at": {"type": "number", "minimum": 0, "description": "Seconds until the 'look' line fades in."},
+		"look_s": {"type": "number", "minimum": 0, "description": "Seconds the 'look' line holds."},
+		"glyph_at": {"type": "number", "minimum": 0, "description": "Seconds until the glyph cuts in."},
+		"show_s": {"type": "number", "exclusiveMinimum": 0, "description": "Exactly how long the glyph is shown whole."},
+		"dissolve_s": {"type": "number", "exclusiveMinimum": 0, "description": "Seconds the glyph takes to break into static."},
+		"static_s": {"type": "number", "minimum": 0, "description": "Seconds of full static after it is gone."},
+		"payoff_hold": {"type": "number", "minimum": 0, "description": "Seconds the payoff line holds."},
+		"width": {"type": "number", "exclusiveMinimum": 0, "description": "Stroke width in px."},
+		"grain": {"type": "number", "minimum": 0, "maximum": 1, "description": "Resting film-grain opacity."},
+		"static": {"type": "number", "minimum": 0, "maximum": 1, "description": "Static opacity at its peak."},
+		"color": {"type": "string", "description": "Html colour of the glyph and text."}
+	}
+}

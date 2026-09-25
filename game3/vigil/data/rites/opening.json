@@ -1,4 +1,4 @@
 {
 	"_comment": "Curated rites for the first ritual days, in order (docs/game3.md, 'The daily draw'). One per sense once more engines exist; free recipes only.",
-	"opening": ["free.breath.001"]
+	"opening": ["free.breath.001", "free.glyph.001"]
 }

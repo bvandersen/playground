@@ -20,6 +20,33 @@
 				"hold_at_end": 12.0
 			},
 			"lines": {"in": "draw", "out": "yield"}
+		},
+		{
+			"id": "deep.glyph.001",
+			"engine": "glyph_moment",
+			"tier": "deep",
+			"title": "The Blink",
+			"requires": ["touch"],
+			"weight": 1,
+			"tags": ["sight", "secret", "night"],
+			"reviewed": true,
+			"params": {
+				"lattice": 7,
+				"symmetry": "rotate",
+				"strokes": [2, 3],
+				"steps": [2, 3],
+				"min_nodes": 12,
+				"min_moves": 12,
+				"size": 0.7,
+				"look_s": 3.0,
+				"glyph_at": 5.5,
+				"show_s": 0.8,
+				"dissolve_s": 1.2,
+				"static_s": 5.0,
+				"static": 0.65,
+				"color": "#c9d6e8"
+			},
+			"lines": {"look": "Do not blink.", "payoff": "You saw it for less than a second. It was there all the same."}
 		}
 	]
 }

@@ -12,6 +12,7 @@ const TIERS := ["free", "deep"]
 ## Engine id -> script. One line per engine; explicit rather than a folder
 ## scan so exported builds (where scripts may be remapped) can't miss one.
 const ENGINES := {
+	"glyph_moment": preload("res://scripts/engines/e05_glyph_moment.gd"),
 	"breath_sigil": preload("res://scripts/engines/e17_breath_sigil.gd"),
 }
 

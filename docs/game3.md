@@ -27,7 +27,7 @@ Starter prompt for a new session:
 
 - [x] Phase 0 — Scaffold, daily draw, threshold screens, first rite
 - [ ] Phase 1 — Kit: synth audio, text/shader effects, Senses layer
-- [ ] Phase 2 — Touch-only rites (no permissions)
+- [ ] Phase 2 — Touch-only rites (no permissions) — r05 done
 - [ ] Phase 3 — Motion rites (accelerometer / gyroscope / haptics)
 - [ ] Phase 4 — Microphone rites
 - [ ] Phase 5 — Stones: mining, the Reliquary, crystal growing, gems
@@ -394,7 +394,7 @@ beyond updating r17 to use the kit.
 ## Phase 2 — Touch-only rites (no permissions)
 
 Ten rites; all work on Web/desktop. Suggested order (cheap → rich):
-5, 13, 12, 8, 19, 14, 7, 1, 11, 15. (17 is done.) Split across two
+5, 13, 12, 8, 19, 14, 7, 1, 11, 15. (17 and 5 are done.) Split across two
 sessions if needed: 2a = 5, 13, 12, 8, 19 · 2b = 14, 7, 1, 11, 15.
 
 ## Phase 3 — Motion rites
@@ -799,3 +799,22 @@ stone to polish (touch speed + coverage raise its shine shader).
   font is used; no OFL serif added yet), grain/vignette. Web preset exists
   but was not exported (no 4.7.2 Web templates downloaded). Camera spike:
   **unverified** (no device or emulator reachable).
+
+**r05 The Glyph of the Moment** (Phase 2, first rite; screenshots
+`docs/game3/glyph.png`, `glyph-dissolve.png`).
+- Engine `glyph_moment` (`e05_glyph_moment.gd`), recipes
+  `free.glyph.001` (canonical), `free.glyph.002` "The Mirrored Mark"
+  (mirror symmetry, 5 s), `deep.glyph.001` "The Blink" (7x7, four-fold,
+  0.8 s). Dev codes `0-6-4-9/10/11`. `opening.json` day 2 = glyph.
+- Glyph = straight moves (8 directions, 1-2 cells) and arcs (quarter to
+  a diagonal neighbour, half circle two cells away) on the lattice;
+  rejected unless enough nodes/moves, spans 3x3, has a junction, has an
+  arc or diagonal, and is **one connected piece** (two pieces read as
+  two letters). ~2-3 attempts, ~1 ms. Centred by bounding box. Seeded
+  from `rng` + clock usec, so replays never repeat; strokes are cleared
+  after the dissolve.
+- Grain/static is 6 pre-made L8 noise textures cycled at 24 fps (no
+  shader yet); Phase 1's `noise.gdshader` should replace it. The "sharp
+  tone" before the glyph waits for `Synth` (like r17's drone).
+- Autowrapped `Label`s must get their width *before* their text, or
+  they size to the zero-width wrap (2000+ px tall) and can't shrink.
