@@ -240,6 +240,17 @@ demo on the repo's GitHub Pages site, at `game1/rail-yard/` (the game2
 demo stays at the site root, so its URL doesn't move). As with game2,
 nothing links to it from any real site.
 
+Every push to `main` releases, whatever it changed. The workflow
+installs Godot 4.3 with only the two `web_nothreads_*` templates (cached
+between runs), exports every demo from its source, runs the postexport
+patch and publishes. So a commit that only touches `game1/` source goes
+out too. Before, the workflow ran only when `static/**` changed, and
+source-only commits were silently not released. The export step fails
+the run if the log has any `ERROR`, because a GDScript parse error still
+exports with exit code 0. Keep committing the local export under
+`static/` as well: it's the known-good build and what the local
+headless-Chromium checks run against.
+
 ## Verification (this pass)
 
 - Headless GDScript runs of the real scene: demo layout builds the

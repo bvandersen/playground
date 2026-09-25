@@ -18,6 +18,12 @@
 # same Pages site under game1/<demo>/ -- again fine thanks to relative
 # asset paths -- so adding it never moves the existing root URL. Further
 # game2 demos (GAME2_DEMOS) ride along the same way under game2/<demo>/.
+#
+# Every push to main releases: the workflow exports each demo from its
+# Godot source itself (Godot 4.3 + the nothreads Web templates, cached),
+# so a commit that only changes game1/ or game2/ source still goes out.
+# The exports committed under static/ are overwritten by the fresh ones
+# on the runner; they stay in the repo as the last known-good build.
 
 name: game1 + game2 Pages (large-asset demos)
 
@@ -25,16 +31,12 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths:
-      - 'static/game2/bounce-melody/**'
-      - 'static/game2/ragdoll-meme/**'
-      - 'static/game1/**'
-      - '.github/workflows/game2-pages.yml'
 
 env:
   DEMO: bounce-melody
   GAME2_DEMOS: ragdoll-meme
   GAME1_DEMOS: rail-yard
+  GODOT_VERSION: 4.3
 
 permissions:
   contents: read
@@ -53,6 +55,49 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Cache Godot
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/godot
+            ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.stable
+          key: godot-${{ env.GODOT_VERSION }}-web-nothreads
+      - name: Install Godot ${{ env.GODOT_VERSION }}
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          base=https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable
+          mkdir -p ~/godot
+          curl -sSLf -o /tmp/godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q -o /tmp/godot.zip -d ~/godot
+          mv ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 ~/godot/godot
+          # The full template archive is ~1 GB; keep only the Web
+          # (nothreads) ones every preset here uses.
+          curl -sSLf -o /tmp/tpl.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          tpl=~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          mkdir -p "$tpl"
+          unzip -q -j -o /tmp/tpl.tpz 'templates/web_nothreads_*' 'templates/version.txt' -d "$tpl"
+          rm /tmp/godot.zip /tmp/tpl.tpz
+      - name: Export demos from source
+        run: |
+          set -o pipefail
+          export_demo() { # <game folder> <demo>
+            p="$1/$2"
+            ~/godot/godot --headless --editor --quit --path "$p" > /dev/null 2>&1 || true
+            ~/godot/godot --headless --path "$p" --export-release "Web" 2>&1 | tee "/tmp/export-$2.log"
+            # A script parse error still exports with exit code 0 (the broken
+            # script is just logged), so fail on any ERROR in the log.
+            if grep -q "ERROR" "/tmp/export-$2.log"; then
+              echo "::error::export of $p failed"; exit 1
+            fi
+            node scripts/game2-postexport.mjs "$2" "$1"
+          }
+          export_demo game2 "$DEMO"
+          for d in ${GAME2_DEMOS}; do export_demo game2 "$d"; done
+          for d in ${GAME1_DEMOS}; do export_demo game1 "$d"; done
       - uses: actions/configure-pages@v5
         with:
           # Pages has never been enabled for this repo -- configure-
