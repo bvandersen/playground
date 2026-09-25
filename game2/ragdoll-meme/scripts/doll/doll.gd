@@ -19,6 +19,10 @@ var acc := PackedVector2Array()
 var inv_mass := PackedFloat32Array()
 var held := PackedInt32Array()
 var rest := PackedVector2Array()
+## The animated pose the muscles pulled toward on the last step (rest pose
+## bent by the enabled moves) -- SoundEvents compares against it, so a
+## dance move bending an elbow isn't mistaken for the elbow snapping.
+var pose := PackedVector2Array()
 var sticks: Array = [] # [a, b, rest_len, stiffness, visible]
 
 const MUSCLE_DAMP := 0.7
@@ -192,6 +196,7 @@ func apply_muscles(world, h: float) -> void:
 		offs[i].x -= dx
 	for i in [Skeleton.L_KNEE, Skeleton.R_KNEE]:
 		offs[i].x -= dx * 0.5
+	pose = offs
 
 	# Shape: pull each joint toward the pose, placed at the pelvis. These are
 	# internal forces -- the net push is removed again -- so a pose the body

@@ -28,10 +28,12 @@ func drag(world: World, index: int, p: Vector2) -> void:
 	if h["m"] < world.magnets.size():
 		world.magnets[h["m"]]["pos"] = p
 
-func release(world: World, index: int, _p: Vector2) -> void:
+func release(world: World, index: int, p: Vector2) -> void:
 	if not _held.has(index):
 		return
 	var h: Dictionary = _held[index]
 	_held.erase(index)
 	if not h["moved"] and h["m"] < world.magnets.size():
 		world.magnets[h["m"]]["strength"] *= -1.0
+		# Higher when it flips to push.
+		world.emit_sfx("magnet", 1.0, p.x, 1.4 if world.magnets[h["m"]]["strength"] < 0.0 else 1.0)

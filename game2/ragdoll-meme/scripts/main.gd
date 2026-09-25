@@ -28,6 +28,7 @@ func _ready() -> void:
 	world = World.new()
 	add_child(world)
 	world.changed.connect(mark_dirty)
+	world.sfx.connect(Sfx.play_at)
 	tool = ToolCatalog.all()[0]
 
 	var layer := CanvasLayer.new()
@@ -99,6 +100,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func toggle_pause() -> void:
 	world.paused = not world.paused
+	Sfx.play("scratch" if world.paused else "whistle")
 	ui.refresh_toolbar()
 
 # --- Recording ----------------------------------------------------------------
@@ -124,15 +126,19 @@ func toggle_recording() -> void:
 	world.show_hint = false
 	world.paused = false
 	_countdown = 3.0
+	Sfx.play("beep")
 	ui.refresh_toolbar()
 
 func _process(delta: float) -> void:
 	if _countdown > 0.0:
+		var shown := ceili(_countdown)
 		_countdown -= delta
 		if _countdown <= 0.0:
 			ui.show_countdown("")
 			_start_in_frames = 2
 		else:
+			if ceili(_countdown) != shown:
+				Sfx.play("beep") # 3.. 2.. 1..
 			ui.show_countdown(str(ceili(_countdown)))
 	elif _start_in_frames > 0:
 		_start_in_frames -= 1
@@ -212,5 +218,6 @@ func chaos() -> void:
 	world.background["kind"] = "gradient"
 	world.background["color"] = g[0]
 	world.background["color2"] = g[1]
+	Sfx.play("poof", 1.0, 0.0, 0.8)
 	ui.refresh_all()
 	mark_dirty()

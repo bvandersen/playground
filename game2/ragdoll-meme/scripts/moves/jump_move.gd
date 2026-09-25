@@ -31,6 +31,7 @@ func pose(ctx: Dictionary, offs: PackedVector2Array, p: Dictionary) -> void:
 	doll.jump_timer = 0.0
 	var g: float = abs(ctx["world"].gravity.y) + 200.0
 	var v := sqrt(2.0 * g * 600.0 * a * doll.size)
+	ctx["world"].emit_sfx("boing", a, doll.center().x, clampf(1.0 / sqrt(doll.size), 0.7, 1.5))
 	for i in Skeleton.COUNT:
 		if not doll.held[i]:
 			doll.set_velocity(i, doll.velocity(i, h) + Vector2(0, -v), h)

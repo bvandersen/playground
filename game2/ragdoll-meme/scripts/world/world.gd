@@ -17,6 +17,10 @@ const MAGNET_RADIUS := 420.0
 const MAX_DOLLS := 8
 
 signal changed # a design edit (look/moves/forces/scene) -- for auto-save
+## Something happened that should make a noise: an Sfx event id, how hard
+## (0..1), where (stage x, for panning) and a pitch multiplier. World only
+## reports; Main hands it to the Sfx autoload.
+signal sfx(id: String, strength: float, x: float, pitch: float)
 
 var dolls: Array = []
 ## force id -> {"enabled": bool, "params": {}}
@@ -63,6 +67,10 @@ var show_hint := true
 var selected: Doll = null
 var recording := false
 var base_position := Vector2.ZERO
+
+## Turns what the physics did this frame (impacts, bent joints, flying,
+## falling over) into sfx events.
+var sounds := SoundEvents.new()
 
 var doll_layer: DrawLayer
 var props_layer: DrawLayer
@@ -151,6 +159,7 @@ func reset_scene() -> void:
 		add_doll(d, false)
 
 func clear_props() -> void:
+	sounds.reset()
 	pins.clear()
 	balloons.clear()
 	magnets.clear()
@@ -184,6 +193,7 @@ func _physics_process(delta: float) -> void:
 		step(h)
 	for g in grabs.values():
 		g["from"] = g["to"]
+	sounds.after_frame(self, delta)
 	for b in booms:
 		b["age"] += delta
 	booms = booms.filter(func(b): return b["age"] < 0.6)
@@ -313,11 +323,17 @@ func _collide_bounds() -> void:
 		for i in Skeleton.COUNT:
 			var r := doll.radius(i)
 			var p := doll.pos[i]
+			# How fast it was going when it hit, from this step's whole
+			# travel (before the projection below eats the overshoot).
 			if p.y > fy - r:
+				sounds.impact(doll, i, (p.y - doll.prev[i].y) / last_h)
 				p.y = fy - r
 			if walls_on:
+				if p.x < r or p.x > STAGE_SIZE.x - r:
+					sounds.impact(doll, i, absf(p.x - doll.prev[i].x) / last_h)
 				p.x = clamp(p.x, r, STAGE_SIZE.x - r)
 				if p.y < r:
+					sounds.impact(doll, i, (doll.prev[i].y - p.y) / last_h)
 					p.y = r
 			doll.pos[i] = p
 
@@ -360,6 +376,8 @@ func _collide_dolls() -> void:
 					if wa + wb <= 0.0:
 						continue
 					var corr := d / dist * (rr - dist) / (wa + wb)
+					var rel := (da.pos[i] - da.prev[i]) - (db.pos[j] - db.prev[j])
+					sounds.collide(da, i, db, j, absf(rel.dot(d / dist)) / last_h)
 					da.pos[i] -= corr * wa
 					db.pos[j] += corr * wb
 
@@ -368,6 +386,7 @@ func _collide_dolls() -> void:
 func add_pin(doll: Doll, i: int, anchor: Vector2) -> void:
 	var length := doll.pos[i].distance_to(anchor)
 	pins.append({"doll": doll, "i": i, "anchor": anchor, "length": 0.0 if length < 24.0 else length})
+	emit_sfx("pin" if length < 24.0 else "rope", 1.0, anchor.x)
 
 func add_balloon(doll: Doll, i: int) -> void:
 	var colors := [Color("#ff4757"), Color("#1e90ff"), Color("#ffd32a"), Color("#2ed573"), Color("#ff6bcb"), Color("#a55eea")]
@@ -376,13 +395,16 @@ func add_balloon(doll: Doll, i: int) -> void:
 		"doll": doll, "i": i, "pos": start, "prev": start, "acc": Vector2.ZERO,
 		"length": 150.0, "color": colors[randi() % colors.size()],
 	})
+	emit_sfx("balloon_tie", 1.0, start.x)
 
 func add_magnet(p: Vector2) -> void:
 	magnets.append({"pos": p, "strength": 9000.0})
+	emit_sfx("magnet", 1.0, p.x)
 
 func boom(p: Vector2, strength: float = 4200.0, radius: float = 360.0) -> void:
 	booms.append({"pos": p, "age": 0.0})
 	shake = maxf(shake, 18.0)
+	emit_sfx("boom", strength / 4200.0, p.x, randf_range(0.9, 1.1))
 	var h := last_h
 	for doll: Doll in dolls:
 		for i in Skeleton.COUNT:
@@ -393,6 +415,11 @@ func boom(p: Vector2, strength: float = 4200.0, radius: float = 360.0) -> void:
 			var dir := d / dist if dist > 0.01 else Vector2.UP
 			var dv := dir * strength * (1.0 - dist / radius) + Vector2(0, -strength * 0.25)
 			doll.prev[i] -= dv * h
+	# Balloons caught in the middle of the blast pop; the rest are flung.
+	var popped := balloons.filter(func(b): return (b["pos"] as Vector2).distance_to(p) < radius * 0.45)
+	if not popped.is_empty():
+		balloons = balloons.filter(func(b): return not popped.has(b))
+		emit_sfx("balloon_pop", 1.0, p.x)
 	for b in balloons:
 		var d: Vector2 = b["pos"] - p
 		if d.length() < radius:
@@ -426,12 +453,22 @@ func erase_near(p: Vector2, reach: float = 80.0) -> bool:
 		var hit := pick_joint(p)
 		if hit.is_empty():
 			return false
-		var before := pins.size() + balloons.size()
+		var pins_before := pins.size()
+		var balloons_before := balloons.size()
 		pins = pins.filter(func(q): return not (q["doll"] == hit[0] and q["i"] == hit[1]))
 		balloons = balloons.filter(func(q): return not (q["doll"] == hit[0] and q["i"] == hit[1]))
-		return pins.size() + balloons.size() < before
+		if balloons.size() < balloons_before:
+			emit_sfx("balloon_pop", 1.0, p.x)
+		elif pins.size() < pins_before:
+			emit_sfx("vanish", 1.0, p.x)
+		return pins.size() + balloons.size() < pins_before + balloons_before
+	emit_sfx("balloon_pop" if best_list == balloons else "vanish", 1.0, p.x)
 	best_list.remove_at(best_i)
 	return true
+
+func emit_sfx(id: String, strength: float, x: float, pitch: float = 1.0) -> void:
+	# Slow-mo plays everything lower.
+	sfx.emit(id, strength, x, pitch * clampf(lerpf(1.0, time_scale, 0.6), 0.5, 1.4))
 
 func magnet_near(p: Vector2, reach: float = 70.0) -> int:
 	for i in magnets.size():

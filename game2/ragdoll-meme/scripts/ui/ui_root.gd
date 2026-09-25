@@ -454,11 +454,14 @@ func _doll_header(parent: Node) -> Label:
 		var d := _doll()
 		if d != null and main.world.duplicate_doll(d) == null:
 			flash("That's the most dolls a stage can hold.")
+		elif d != null:
+			Sfx.play("poof")
 		refresh_all(), "👯")
 	_button(row, "", func():
 		var d := _doll()
 		if d != null:
 			main.world.remove_doll(d)
+			Sfx.play("vanish")
 			if main.world.dolls.is_empty():
 				close_sheets()
 			refresh_all(), "🗑️").tooltip_text = "Delete this doll"
@@ -483,6 +486,7 @@ func _add_doll() -> void:
 	if main.world.add_doll() == null:
 		flash("That's the most dolls a stage can hold.")
 		return
+	Sfx.play("poof")
 	flash("New doll! Style it in Look.")
 	refresh_all()
 
@@ -916,6 +920,7 @@ func refresh_scene() -> void:
 	_button(big, "New scene", func():
 		main.new_scene()
 		flash("Fresh start."))
+	_sound_controls(scene_box)
 
 	_heading(scene_box, "Caption (meme text)")
 	for which in ["top", "bottom"]:
@@ -971,6 +976,46 @@ func refresh_scene() -> void:
 	green.add_theme_color_override("font_color", Color("#aab"))
 	green.add_theme_font_size_override("font_size", 13)
 	scene_box.add_child(green)
+
+
+
+## Sound effects on/off, volume, and the two kinds of joke that can be
+## switched off on their own.
+func _sound_controls(box: VBoxContainer) -> void:
+	_heading(box, "Sound effects")
+	var snd := _row(box)
+	var on := CheckBox.new()
+	on.text = "Sounds on"
+	on.button_pressed = Sfx.enabled
+	on.toggled.connect(func(v):
+		Sfx.set_enabled(v)
+		Sfx.play("boing"))
+	snd.add_child(on)
+	var vol := HSlider.new()
+	vol.min_value = 0.0
+	vol.max_value = 1.0
+	vol.step = 0.05
+	vol.value = Sfx.volume
+	vol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vol.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	vol.drag_ended.connect(func(_c): Sfx.play("bonk"))
+	vol.value_changed.connect(Sfx.set_volume)
+	snd.add_child(vol)
+	var extras := _row(box)
+	for opt in [["\"Ow!\" and screams", Sfx.voices, Sfx.set_voices, "ouch"], ["Fart jokes", Sfx.rude, Sfx.set_rude, "fart"]]:
+		var c := CheckBox.new()
+		c.text = opt[0]
+		c.button_pressed = opt[1]
+		c.toggled.connect(func(v):
+			opt[2].call(v)
+			Sfx.play(opt[3]))
+		extras.add_child(c)
+	var about := Label.new()
+	about.text = "Bonks, cracks, boings and balloon squeaks play as things happen, and they're recorded into the video."
+	about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	about.add_theme_color_override("font_color", Color("#aab"))
+	about.add_theme_font_size_override("font_size", 13)
+	box.add_child(about)
 
 # --- Typing on a phone ------------------------------------------------------------
 #

@@ -628,7 +628,8 @@ Re-export after a source change:
    green screen), floor colour, and an optional "made with" watermark.
    🎲 "Surprise me!" randomizes every doll's look and moves plus one
    force, which is the fastest way to something weird.
-5. **Record.** REC → 3-2-1 → it records the stage only, into a 720×1280
+5. **Record.** REC → 3-2-1 → it records the stage only (and the sound
+   effects -- see "Sound effects" below), into a 720×1280
    (9:16) video: mp4 where the browser can encode it (Chrome/Edge/
    Safari), webm otherwise, for up to 60 s while the player keeps
    dragging and blowing things up. Then a preview loops with **Share**
@@ -743,10 +744,106 @@ Re-export after a source change:
     device photo picker (needs a real file dialog).
   - iOS Safari: its transient-user-activation rules for the file picker
     are stricter than Chrome's.
-  - The video has **no audio**. Godot's audio graph isn't reachable from
-    the page, and the tip in the preview says to add a trending sound
-    when posting, which is how these clips usually get their sound
-    anyway.
+  - Sound effects on a real phone: iOS mutes Web Audio while the ring/
+    silent switch is on, and whether Safari's MediaRecorder keeps the
+    mixed-in sound track wasn't checked here.
+
+### Sound effects
+
+Brief (verbatim):
+
+> Add funny sounds to trigger on diff events such as on impact on bending
+> back a lot, on balloon attach and so on that can trigger all kinds of
+> funny sounds. Load cc free sounds or make some using Elevenlabs mcp
+
+- **Clips:** 31 short mp3s in `game2/ragdoll-meme/sfx/`, generated with
+  ElevenLabs' text-to-sound model (`eleven_text_to_sound_v2`) through
+  the ElevenLabs MCP, then trimmed of silence, capped at 0.3-2.2 s, faded
+  out, peak-normalized to -1 dB and re-encoded as mono 64 kbps with
+  ffmpeg: 324 KB in all. What they may be used for follows the
+  ElevenLabs account's plan terms (check before a store release). The
+  prompts, one line per file:
+
+  | file | prompt |
+  |---|---|
+  | thud_1, thud_2 | Soft cartoon body thud landing on a wooden floor, short |
+  | slam_1, slam_2 | Heavy comedic body slam on the floor with a wet splat, short |
+  | bonk_1 | Cartoon bonk, hollow wooden knock on a head, short and funny, close-mic |
+  | bonk_2 | Cartoon bonk, metal frying pan hitting a head, short ring |
+  | crack_1, crack_2 | Cartoon bone crack, crunchy knuckle crack, short and comedic |
+  | ouch_1, ouch_2 | Goofy cartoon character yelping "ow!", short high-pitched voice |
+  | scream_1, scream_2 | Goofy cartoon man screaming "aaaah" while flying through the air, short |
+  | balloon_tie | Rubber balloon being inflated and tied, squeaky rubber stretch, short |
+  | balloon_pop | Loud rubber balloon bursting, sharp bang, close-mic |
+  | boom_1, boom_2 | Cartoon explosion, punchy comedic boom with debris clatter |
+  | pin | Hammer hitting a nail into wood, single thunk, short |
+  | rope | Rope pulled tight, creaky rope stretch, short |
+  | magnet | Cartoon magnet activation, electric zap with a wobbly hum, short |
+  | boing_1, boing_2 | Cartoon spring boing, wobbly jaw harp twang, short |
+  | trombone | Sad trombone, wah wah wah waaah, comedic fail |
+  | scratch | Vinyl record scratch, needle scratch stop |
+  | whistle | Cartoon slide whistle going up, quick |
+  | whoosh | Fast cartoon whoosh, swish through the air |
+  | fart | Short comedic squeaky cartoon fart |
+  | squeak | Rubber squeaky toy squeezed once |
+  | poof | Cartoon poof, magical puff of smoke appearing with a sparkle chime |
+  | stretch | Rubber band stretching, creaky elastic stretch, cartoon |
+  | beep | Short digital countdown beep, clean |
+  | vanish | Cartoon vanish, quick zip and pop disappearing |
+
+  The first balloon-pop prompt ("Balloon popping, sharp loud pop") came
+  back near-silent (-35 dB peak) and was regenerated.
+- **What triggers what** (`media/sfx.gd` is the catalog: event id ->
+  clips, loudness, pitch wobble, minimum gap between repeats):
+  - physics, detected by `world/sound_events.gd` from what the solver
+    did each frame: a body part hitting the floor or a wall (thud, slam
+    above ~1350 px/s, bonk for the head; a hard landing on the behind is
+    sometimes a fart, a slam sometimes gets an "ow!"), a knee or elbow
+    folding far past natural or the neck/spine bending far back (crack,
+    often + "ow!"), rubber limbs pulled past 1.6x their length
+    (stretch), a doll flying fast (scream), a doll that stood for a
+    second falling flat (sad trombone), two dolls knocking together
+    (bonk);
+  - tools and moves: grab (squeak), flick-throw (whoosh), pin (hammer),
+    rope (creak), boom (explosion; balloons caught in the middle pop),
+    balloon tied on (squeaky inflate), erase (balloon pop / vanish),
+    magnet placed or flipped (zap, higher when it flips to push), Jump
+    (boing), Freeze on/off (record scratch / slide whistle), new or
+    copied doll (poof), Surprise me (poof), REC countdown (beeps).
+  - Pitch follows the scene: slow-mo plays everything lower, small dolls
+    sound higher, big ones lower. Sounds pan with where they happened.
+- **Bend detection compares against the animated pose too.** A crack
+  needs the joint bent far from *both* its rest bend and the bend the
+  moves are pulling it toward -- otherwise Dance, Wave and Flail cracked
+  elbows every second (sim_check's first run: 6 cracks in 3 s of
+  Dance). Impact speed is read from the step's full travel before the
+  floor projection, not from the velocity after it (that read a 700 px
+  drop as silent). With both fixes, standing, dancing, headbang, wave,
+  quake and walls make at most one sound in 3 s in sim_check, and each
+  deliberate mishap (fall over, drop, folded knee, hard throw, doll into
+  doll) makes its own.
+- **Played through the page's Web Audio, not Godot's**
+  (`RagdollSfx` in `media/web_bridge.gd`). Godot hands each clip's mp3
+  bytes (`AudioStreamMP3.data`, so they're in the .pck once) to the page,
+  which decodes them. That graph is what the recorder taps: `RagdollRec`
+  adds its `MediaStreamDestination` track to the captured stream and
+  picks an audio+video codec string (`avc1,mp4a.40.2` / `vp9,opus`), so
+  **the recorded video now has the sound effects in it**. The preview
+  plays with sound where the browser allows, and a tap on it mutes.
+  Audio is unlocked on the raw DOM pointer/key events, because Godot
+  handles input a frame later, outside the user gesture. Off the Web
+  a pool of AudioStreamPlayers plays the same clips.
+- **Scene sheet -> Sound effects:** on/off, volume, and switches for the
+  voices ("ow!", screams) and fart jokes; kept in `user://sound.json`,
+  separate from the scene.
+- **Verified** in headless Chromium against the export: all 31 clips
+  decode, grab/balloon/boom/countdown events play, and a recording is a
+  video/mp4 whose decoded audio track peaks at ~0.6. Not verified: how it
+  sounds on a real phone (see "Not verified here" above).
+- **Seen while tuning, not changed:** Walk moves a doll across the whole
+  stage several times a second in sim_check (pelvis x jumping ~300 px
+  every 10 frames, the same on the code before this change), so a
+  walking doll slams at every turn-around.
 
 ## Git workflow for this folder
 

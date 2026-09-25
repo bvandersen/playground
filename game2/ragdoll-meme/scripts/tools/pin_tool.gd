@@ -14,6 +14,7 @@ func press(world: World, index: int, p: Vector2) -> void:
 	for i in world.pins.size():
 		if (world.pins[i]["anchor"] as Vector2).distance_to(p) < 40.0:
 			world.pins.remove_at(i)
+			world.emit_sfx("vanish", 0.8, p.x)
 			return
 	var hit := world.pick_joint(p)
 	if not hit.is_empty():

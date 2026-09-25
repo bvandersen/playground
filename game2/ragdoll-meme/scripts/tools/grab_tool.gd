@@ -18,6 +18,7 @@ func press(world: World, index: int, p: Vector2) -> void:
 	if not hit.is_empty():
 		world.grabs[index] = {"doll": hit[0], "i": hit[1], "from": hit[0].pos[hit[1]], "to": p}
 		world.selected = hit[0]
+		world.emit_sfx("squeak", 0.6, p.x, randf_range(0.9, 1.3))
 		return
 	var m := world.magnet_near(p)
 	if m >= 0:
@@ -29,6 +30,13 @@ func drag(world: World, index: int, p: Vector2) -> void:
 	elif _magnet.has(index) and _magnet[index] < world.magnets.size():
 		world.magnets[_magnet[index]]["pos"] = p
 
-func release(world: World, index: int, _p: Vector2) -> void:
+func release(world: World, index: int, p: Vector2) -> void:
+	if world.grabs.has(index):
+		# Let go mid-flick: whoosh.
+		var g: Dictionary = world.grabs[index]
+		var doll: Doll = g["doll"]
+		var speed := doll.velocity(g["i"], world.last_h).length() * world.time_scale
+		if speed > 1400.0:
+			world.emit_sfx("whoosh", clampf(speed / 3500.0, 0.4, 1.0), p.x)
 	world.grabs.erase(index)
 	_magnet.erase(index)

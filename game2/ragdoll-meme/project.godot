@@ -20,6 +20,7 @@ EmojiCache="*res://scripts/media/emoji_cache.gd"
 ImageLibrary="*res://scripts/media/image_library.gd"
 TextArt="*res://scripts/media/text_art.gd"
 Recorder="*res://scripts/media/recorder.gd"
+Sfx="*res://scripts/media/sfx.gd"
 
 [display]
 

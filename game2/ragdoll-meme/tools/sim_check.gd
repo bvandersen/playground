@@ -8,8 +8,11 @@ extends Node
 ## doll stand, does it fall over without balance, can a hand be dragged
 ## (and the body follow), do moves and forces run without blowing up.
 
+var _w: World
+
 func _ready() -> void:
 	var w := World.new()
+	_w = w
 	add_child(w)
 	var d := w.add_doll()
 	_run(w, 120)
@@ -71,11 +74,54 @@ func _ready() -> void:
 	var state := w.to_dict()
 	w.from_dict(JSON.parse_string(JSON.stringify(state)))
 	print("round-trip dolls: ", w.dolls.size(), " same: ", JSON.stringify(w.to_dict()) == JSON.stringify(state))
+	_sound_checks(w)
 	get_tree().quit()
 
 func _run(w: World, ticks: int) -> void:
 	for t in ticks:
 		w._physics_process(1.0 / 60.0)
+
+## Sound events: what a few deliberate mishaps sound like (each should make
+## its noise), after the per-move counts above showed which ones stay quiet.
+func _sound_checks(w: World) -> void:
+	print("--- sounds")
+	w.reset_design()
+	var d := w.add_doll()
+	_run(w, 120)
+	w.sounds.counts.clear()
+	d.moves["stand"]["enabled"] = false
+	_run(w, 240)
+	print("%-34s %s" % ["fall over (balance off)", w.sounds.counts])
+	d.moves["stand"]["enabled"] = true
+	w.reset_scene()
+	d = w.dolls[0]
+	_run(w, 60)
+	w.sounds.counts.clear()
+	for i in Skeleton.COUNT:
+		d.pos[i] += Vector2(0, -700)
+		d.prev[i] = d.pos[i]
+	_run(w, 120)
+	print("%-34s %s" % ["dropped from 700 px", w.sounds.counts])
+	w.sounds.counts.clear()
+	var knee := d.pos[Skeleton.L_KNEE]
+	w.grabs[0] = {"doll": d, "i": Skeleton.L_FOOT, "from": d.pos[Skeleton.L_FOOT], "to": knee + Vector2(-10, -95)}
+	w.grabs[1] = {"doll": d, "i": Skeleton.L_KNEE, "from": knee, "to": knee}
+	_run(w, 30)
+	w.grabs.clear()
+	_run(w, 60)
+	print("%-34s %s" % ["knee folded back", w.sounds.counts])
+	w.sounds.counts.clear()
+	for i in Skeleton.COUNT:
+		d.set_velocity(i, Vector2(2600, -1800), w.last_h)
+	_run(w, 90)
+	print("%-34s %s" % ["thrown hard", w.sounds.counts])
+	var d2 := w.add_doll(null, false)
+	_run(w, 60)
+	w.sounds.counts.clear()
+	for i in Skeleton.COUNT:
+		d.set_velocity(i, (d2.pos[Skeleton.CHEST] - d.pos[Skeleton.CHEST]).normalized() * 1800.0, w.last_h)
+	_run(w, 40)
+	print("%-34s %s" % ["thrown into another doll", w.sounds.counts])
 
 func _report(label: String, d: Doll) -> void:
 	var ok := true
@@ -85,3 +131,6 @@ func _report(label: String, d: Doll) -> void:
 	var up := d.pos[Skeleton.HEAD].y < d.pos[Skeleton.PELVIS].y - 60.0
 	print("%-34s pelvis %s head %s  upright=%s finite=%s grounded=%s" % [
 		label, d.pos[Skeleton.PELVIS].round(), d.pos[Skeleton.HEAD].round(), up, ok, d.grounded])
+	if not _w.sounds.counts.is_empty():
+		print("  sounds ", _w.sounds.counts)
+	_w.sounds.counts.clear()

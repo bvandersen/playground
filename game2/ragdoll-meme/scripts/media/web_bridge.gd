@@ -14,9 +14,13 @@ class_name WebBridge
 ##                     proxy -- decodes any format the browser can (gif,
 ##                     avif, heic on Safari...), downsizes, returns PNG
 ##   RagdollPickImage  the device photo picker / camera roll
+##   RagdollSfx        plays the sound effects (Sfx) through the page's own
+##                     Web Audio graph, which the recorder can tap -- Godot's
+##                     Web audio can't be reached from the page
 ##   RagdollRec        records the stage part of the canvas to a video
-##                     (MediaRecorder, mp4 where supported, else webm) and
-##                     shows a preview with Share / Download
+##                     (MediaRecorder, mp4 where supported, else webm), with
+##                     RagdollSfx's sound mixed in, and shows a preview with
+##                     Share / Download
 ##
 ## The recorder can read the WebGL canvas at any time because the export's
 ## head_include forces preserveDrawingBuffer on (export_presets.cfg).
@@ -147,13 +151,82 @@ window.RagdollPickImage = function (maxSide, cb) {
 	input.click();
 };
 
+window.RagdollSfx = (function () {
+	var ctx = null, master = null, dest = null, buffers = {}, volume = 1;
+	function context() {
+		if (ctx) return ctx;
+		var AC = window.AudioContext || window.webkitAudioContext;
+		if (!AC) return null;
+		ctx = new AC();
+		master = ctx.createGain();
+		master.gain.value = volume;
+		master.connect(ctx.destination);
+		return ctx;
+	}
+	// Browsers only let audio start from inside a real user gesture, and
+	// Godot handles input later, in its own frame -- so unlock on the raw
+	// DOM events instead.
+	function unlock() {
+		var c = context();
+		if (c && c.state !== 'running') c.resume().catch(function () {});
+	}
+	['pointerdown', 'touchend', 'keydown', 'mousedown'].forEach(function (t) {
+		window.addEventListener(t, unlock, true);
+	});
+	return {
+		load: function (name, b64) {
+			var c = context();
+			if (!c) return;
+			var bin = atob(b64), bytes = new Uint8Array(bin.length);
+			for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+			c.decodeAudioData(bytes.buffer, function (b) { buffers[name] = b; }, function () {});
+		},
+		play: function (name, gain, rate, pan) {
+			var c = context(), b = buffers[name];
+			if (!c || !b || c.state !== 'running') return;
+			var src = c.createBufferSource();
+			src.buffer = b;
+			src.playbackRate.value = rate;
+			var g = c.createGain();
+			g.gain.value = gain;
+			src.connect(g);
+			var out = g;
+			if (c.createStereoPanner) {
+				var p = c.createStereoPanner();
+				p.pan.value = pan;
+				g.connect(p);
+				out = p;
+			}
+			out.connect(master);
+			src.start();
+		},
+		setVolume: function (v) { volume = v; if (master) master.gain.value = v; },
+		loaded: function () { return Object.keys(buffers).length; },
+		state: function () { return ctx ? ctx.state : 'none'; },
+		// A MediaStream carrying everything the effects play, for the recorder.
+		stream: function () {
+			var c = context();
+			if (!c || !c.createMediaStreamDestination) return null;
+			if (!dest) { dest = c.createMediaStreamDestination(); master.connect(dest); }
+			return dest.stream;
+		}
+	};
+})();
+
 window.RagdollRec = (function () {
 	var rec = null, out = null, ctx = null, src = null, raf = 0, crop = [0, 0, 1, 1], chunks = [], mime = '';
 	var TYPES = ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4',
 		'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
-	function pick() {
-		for (var i = 0; i < TYPES.length; i++) {
-			if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(TYPES[i])) return TYPES[i];
+	// With a sound track the codec list has to name an audio codec too, or
+	// Chrome refuses the stream. Bare containers ('video/mp4') let the
+	// browser choose both.
+	var AV_TYPES = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a.40.2',
+		'video/mp4;codecs=avc1,opus', 'video/mp4', 'video/webm;codecs=vp9,opus',
+		'video/webm;codecs=vp8,opus', 'video/webm'];
+	function pick(withAudio) {
+		var list = withAudio ? AV_TYPES : TYPES;
+		for (var i = 0; i < list.length; i++) {
+			if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(list[i])) return list[i];
 		}
 		return '';
 	}
@@ -182,12 +255,19 @@ window.RagdollRec = (function () {
 		o.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(8,8,14,0.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px;box-sizing:border-box;';
 		var v = document.createElement('video');
 		v.src = url; v.autoplay = true; v.loop = true; v.muted = true; v.playsInline = true; v.controls = false;
+		// Try with sound; if the browser won't autoplay audio here, stay
+		// muted and let a tap on the video turn it on.
+		v.muted = false;
+		v.play().catch(function () { v.muted = true; v.play().catch(function () {}); });
+		v.onclick = function () { v.muted = !v.muted; };
 		v.style.cssText = 'max-width:100%;max-height:calc(100% - 130px);border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,0.6);background:#000;';
 		var row = document.createElement('div');
 		row.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;justify-content:center;';
 		var tip = document.createElement('div');
 		tip.style.cssText = 'color:#aab;font:14px system-ui,sans-serif;text-align:center;max-width:420px;';
-		tip.textContent = 'Tip: add a trending sound when you post it.';
+		tip.textContent = window.RagdollRec.lastAudio
+			? 'The sound effects are in the clip (tap it to mute). Tip: add a trending sound on top when you post it.'
+			: 'Tip: add a trending sound when you post it.';
 		if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
 			var share = button('Share', '#ff2d6f');
 			share.onclick = function () {
@@ -211,7 +291,7 @@ window.RagdollRec = (function () {
 		window.RagdollRec.lastSize = blob.size;
 	}
 	return {
-		lastFile: '', lastSize: 0, lastError: '',
+		lastFile: '', lastSize: 0, lastError: '', lastAudio: false,
 		supported: function () {
 			return !!(window.MediaRecorder && HTMLCanvasElement.prototype.captureStream);
 		},
@@ -224,8 +304,12 @@ window.RagdollRec = (function () {
 				out.width = ow; out.height = oh;
 				ctx = out.getContext('2d');
 				crop = [x, y, Math.max(1, w), Math.max(1, h)];
-				mime = pick();
 				var stream = out.captureStream(fps);
+				var sfx = window.RagdollSfx && window.RagdollSfx.stream();
+				var audio = sfx ? sfx.getAudioTracks()[0] : null;
+				if (audio) stream.addTrack(audio);
+				mime = pick(!!audio);
+				window.RagdollRec.lastAudio = !!audio;
 				chunks = [];
 				var opts = { videoBitsPerSecond: 8000000 };
 				if (mime) opts.mimeType = mime;
@@ -235,7 +319,8 @@ window.RagdollRec = (function () {
 					var type = (rec && rec.mimeType) || mime || 'video/webm';
 					rec = null;
 					cancelAnimationFrame(raf);
-					stream.getTracks().forEach(function (t) { t.stop(); });
+					// The sound track is shared with RagdollSfx -- only stop the video.
+					stream.getVideoTracks().forEach(function (t) { t.stop(); });
 					show(new Blob(chunks, { type: type.split(';')[0] }));
 				};
 				rec.start(250);
