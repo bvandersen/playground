@@ -68,6 +68,7 @@ var stations_view: StationsView
 var people_view: PeopleView
 var trains_view: TrainsView
 var smoke: Smoke
+var static_cache: StaticCache
 var overlay: DrawOverlay
 var ui: UIRoot
 
@@ -150,6 +151,15 @@ func _ready() -> void:
 	camera = Camera2D.new()
 	add_child(camera)
 	camera.make_current()
+	# Everything up to the stations never moves by itself: drawn once into
+	# a texture shown underneath, and redrawn only when it or the camera
+	# changes (see StaticCache).
+	var under := CanvasLayer.new()
+	under.layer = -1
+	add_child(under)
+	static_cache = StaticCache.new()
+	add_child(static_cache)
+	static_cache.setup(under, [ground, track_view, road_view, buildings_view, stations_view])
 
 	var canvas_layer := CanvasLayer.new()
 	add_child(canvas_layer)

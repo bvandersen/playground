@@ -499,6 +499,47 @@ digest of every vehicle and car position; it matched the old code
 exactly over 12,000 ticks (200 s of play). Drawing wasn't changed: it
 was already ~80 draw calls a frame.
 
+### Third pass: old devices slowed down again (static layer cache)
+
+Measured the committed build of every commit since the first pass the
+same way (headless Chromium, SwiftShader, 480×860, demo layout): 17 FPS
+up to "passengers with dogs", then **11 FPS** from "roads, traffic,
+buildings and nature" on. That commit more than doubled the triangles
+drawn each frame (70k → 153k; 170k with bridges and tunnels), spread over
+grass scenery, track, roads, buildings and stations. No single layer
+dominated, and coarser circles barely helped (`tools/_tris.gd` counts
+triangles per view).
+
+All of those layers sit under everything that moves and only change on
+an edit, so `StaticCache` (`scripts/render/static_cache.gd`) draws them
+into an off-screen SubViewport and shows that under the world as one
+screen-sized quad. The SubViewport shares the game's World2D and draws
+only canvas items on its visibility layer (the screen's
+`canvas_cull_mask` leaves them out), with the screen's own transform
+(`get_final_transform() * canvas_transform`, so the window stretch is
+included) at the window's pixel size, shown back 1:1 with nearest
+filtering. It re-renders only when that transform or size changes, or a
+static node draws, is added or removed (`draw` signal and the tree's
+`node_added` / `node_removed`), and it decides in
+`RenderingServer.frame_pre_draw`, so a change shows in the same frame.
+The quad is a raw RenderingServer canvas item for the same reason. The
+parents of the static nodes are on both layers, because a canvas item the
+mask culls hides its children too.
+
+`tools/_test_static_cache.gd` (needs Xvfb and `--rendering-driver
+opengl3`, see its header) renders the same frozen frame with the cache
+on and off across zooms, a rotation, a road edit, a window resize, Clear
+all and reloading the demo, taking the first frame after each change. It
+requires zero differing pixels, and gets zero. A first version that used
+`global_canvas_transform` instead of `get_final_transform()` was off by a
+fraction of a pixel (and badly wrong after a resize), which is what the
+test is for.
+
+Result: **11 → ~20 FPS** in Design and Play with the camera still, and
+11 → ~15 FPS while dragging the view. Worst case, when the camera moves
+every frame (Follow), it costs the same as before plus one screen-sized
+quad.
+
 ## Android build and Google Play release
 
 Goal: ship Rail Yard as an Android app on Google Play, built headlessly
