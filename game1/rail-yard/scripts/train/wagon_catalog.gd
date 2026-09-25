@@ -101,7 +101,40 @@ func make_car(type: String, livery: Color) -> Dictionary:
 	var c: Color = livery if e.get("livery", false) else colors[randi() % colors.size()]
 	return {"type": type, "color": c, "seed": randi() % 100000}
 
-func paint(type: String, ci: CanvasItem, car: Dictionary) -> void:
+func paint(type: String, ci, car: Dictionary) -> void:
 	var e := entry(type)
 	var painter: Callable = e["paint"]
 	painter.call(ci, float(e["length"]), float(e["width"]), car["color"], int(car["seed"]))
+
+# --- Baked meshes --------------------------------------------------------------
+# A car's picture only depends on its type, colour and seed, so each one is
+# painted into a TriBatch once and reused every frame as a single mesh
+# (see TriBatch for why that matters on the Web build).
+
+const MESH_CACHE_LIMIT := 256
+
+var _meshes := {}
+
+## `car` painted in its own frame (centred, x towards the front).
+func car_mesh(car: Dictionary) -> ArrayMesh:
+	var key := "car|%s|%s|%d" % [car["type"], (car["color"] as Color).to_html(), int(car["seed"])]
+	return _cached(key, func(b: TriBatch): paint(car["type"], b, car))
+
+## The plain body outline every car casts as its shadow.
+func shadow_mesh(length: float, width: float) -> ArrayMesh:
+	return _cached("shadow|%s|%s" % [length, width], func(b: TriBatch): art.shadow(b, length, width, Color(0, 0, 0, 0.3)))
+
+## One bogie (wheel set) in its own frame.
+func bogie_mesh(width: float) -> ArrayMesh:
+	return _cached("bogie|%s" % width, func(b: TriBatch): art.bogie(b, width))
+
+func _cached(key: String, painter: Callable) -> ArrayMesh:
+	if _meshes.has(key):
+		return _meshes[key]
+	if _meshes.size() >= MESH_CACHE_LIMIT:
+		_meshes.clear() # layouts only ever hold a few dozen cars
+	var b := TriBatch.new()
+	painter.call(b)
+	var mesh := b.to_mesh()
+	_meshes[key] = mesh
+	return mesh

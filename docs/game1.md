@@ -196,10 +196,60 @@ nothing links to it from any real site.
   proven pattern — emulated mouse events from touches are ignored via
   `DEVICE_ID_EMULATION`, touches tracked by index — but only desktop
   mouse input was driven in the test browser), and frame rate on a
-  low-end phone with several long trains.
+  low-end phone with several long trains (see the performance pass
+  below: measured in SwiftShader only).
 - 2D MSAA isn't supported by Godot 4.3's GLES3/WebGL renderer (it warns
   and ignores it), so edges rely on the anti-aliased outline strokes the
   painters draw rather than on MSAA.
+
+## Performance pass (mobile was slow)
+
+Cause: draw calls, not the simulation. In Godot 4.3's Compatibility
+(WebGL) renderer every `draw_circle`, anti-aliased line and polygon is
+its own draw call with its own vertex buffer. The scenery alone was
+~5,000 of them, drawn every frame across the whole 5 km map (one canvas
+item, so no culling). The cars were several hundred more, rebuilt from
+scratch every physics tick, and the smoke up to ~1,600 circles per frame.
+Headless Chromium (SwiftShader) managed **1.9 FPS** even with nothing
+moving.
+
+Fix, with no visual change:
+
+- `scripts/render/tri_batch.gd`: `TriBatch` copies the `CanvasItem.draw_*`
+  calls the painters use (circle, arc, line, polyline, polygon, rect,
+  set_transform) but writes one vertex-coloured triangle list, uploaded
+  as a single `ArrayMesh`. It reproduces Godot's geometry: the
+  averaged-normal polyline strip and the 1.25-unit AA feather including
+  end caps, both measured from the 4.3 Web renderer. Circles get enough
+  segments to stay round at max zoom on a high-DPI phone. Painters now
+  take an untyped `ci`, so they work on a CanvasItem or a TriBatch.
+- Cars, shadows and bogies are baked once per (type, colour, seed) in
+  `WagonCatalog.car_mesh` & co. `TrainsView` only places the meshes each
+  frame; the couplers go into one per-frame batch.
+- Scenery is baked once per item. After every track change the
+  survivors are merged into 640 px chunk meshes, one layer per kind so
+  trees still overlap bushes and rocks, and they keep the same stacking
+  sort. Off-screen chunks are culled.
+- Track: one mesh, rebuilt only when it changes. Icon buttons: one mesh each.
+- Smoke: one shared soft-edged disc texture drawn as tinted quads, which
+  Godot batches into one draw call. The only pixel difference anywhere:
+  blob rims are smoothly anti-aliased instead of aliased (≤ 31/255 at
+  alpha 0.34).
+- Train physics, same arithmetic: per-car length and mass are read once
+  per tick rather than in each of the 8 substeps. The look-ahead
+  collision check pre-filters to cars near the look-ahead path rather
+  than allocating an array per car per probe point. 2.2 → ~0.9 ms per
+  tick (desktop WASM).
+
+Result, same headless Chromium: ~80 draw calls per frame, down from
+several thousand. **1.9 → 17.8 FPS** idle and 2.0 → 16.7 FPS playing.
+What's left there is SwiftShader rasterising: 73% of main-thread time
+sits in `getParameter`, a synchronous wait for the GPU process, and an
+empty scene only reaches ~50 FPS. Before/after screenshots at fit and at
+max zoom are pixel-identical apart from the per-load random wagon
+colours and coal. Graphics-quality tiers were considered and not added:
+the cost was overhead, not detail, so tiers would have traded visuals
+for a problem that's gone.
 
 ## Ideas for later
 

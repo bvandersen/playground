@@ -7,7 +7,9 @@ class_name WagonArt
 ## front, y across it, the car centred on the origin. `seed` makes the
 ## cargo (coal lumps, logs, which containers) different per car but stable
 ## frame to frame. Light comes from the top-left, matching the shadows
-## TrainsView and Ground cast.
+## TrainsView and Ground cast. `ci` is anything with CanvasItem's draw_*
+## calls: in practice a TriBatch, so each car is baked into one mesh once
+## (WagonCatalog.car_mesh) rather than re-drawn shape by shape every frame.
 
 const BRASS := Color(0.8, 0.64, 0.3)
 const STEEL_DARK := Color(0.13, 0.13, 0.15)
@@ -19,7 +21,7 @@ var _rr_cache := {}
 
 ## A rounded rectangle `w` x `h` centred on (x, y), with an optional
 ## anti-aliased outline.
-func rr(ci: CanvasItem, x: float, y: float, w: float, h: float, r: float, col: Color, outline: Color = Color(0, 0, 0, 0)) -> void:
+func rr(ci, x: float, y: float, w: float, h: float, r: float, col: Color, outline: Color = Color(0, 0, 0, 0)) -> void:
 	r = minf(r, minf(w, h) * 0.5 - 0.15)
 	if r < 0.6:
 		ci.draw_rect(Rect2(x - w * 0.5, y - h * 0.5, w, h), col)
@@ -49,15 +51,22 @@ func rr_poly(w: float, h: float, r: float) -> PackedVector2Array:
 	_rr_cache[key] = pts
 	return pts
 
-func circle(ci: CanvasItem, p: Vector2, r: float, col: Color, ring: Color = Color(0, 0, 0, 0)) -> void:
+func circle(ci, p: Vector2, r: float, col: Color, ring: Color = Color(0, 0, 0, 0)) -> void:
 	ci.draw_circle(p, r, col)
 	ci.draw_arc(p, r, 0.0, TAU, 16, ring if ring.a > 0.0 else col, 0.8, true)
 
 ## Shadow footprint every car shares (the plain body outline).
-func shadow(ci: CanvasItem, length: float, width: float, col: Color) -> void:
+func shadow(ci, length: float, width: float, col: Color) -> void:
 	rr(ci, 0.0, 0.0, length + 1.0, width + 1.0, 3.5, col)
 
-func _lumps(ci: CanvasItem, rng: RandomNumberGenerator, w: float, h: float, base: float, spread: float, count: int, rmin: float, rmax: float) -> void:
+## One bogie: a dark frame with its four wheels, x along the track.
+func bogie(ci, width: float) -> void:
+	rr(ci, 0.0, 0.0, 15.0, width - 3.0, 1.5, Color(0.1, 0.1, 0.11))
+	for x in [-4.5, 4.5]:
+		for y in [-6.2, 6.2]:
+			ci.draw_rect(Rect2(x - 2.2, y - 1.1, 4.4, 2.2), Color(0.32, 0.32, 0.34))
+
+func _lumps(ci, rng: RandomNumberGenerator, w: float, h: float, base: float, spread: float, count: int, rmin: float, rmax: float) -> void:
 	for _i in range(count):
 		var p := Vector2(rng.randf_range(-w * 0.5, w * 0.5), rng.randf_range(-h * 0.5, h * 0.5))
 		var v := base + rng.randf() * spread
@@ -67,7 +76,7 @@ func _lumps(ci: CanvasItem, rng: RandomNumberGenerator, w: float, h: float, base
 
 # --- Locomotives -----------------------------------------------------------
 
-func diesel(ci: CanvasItem, l: float, w: float, col: Color, _seed: int) -> void:
+func diesel(ci, l: float, w: float, col: Color, _seed: int) -> void:
 	var hl := l * 0.5
 	var hw := w * 0.5
 	var edge := col.darkened(0.55)
@@ -96,7 +105,7 @@ func diesel(ci: CanvasItem, l: float, w: float, col: Color, _seed: int) -> void:
 	circle(ci, Vector2(hl - 0.6, -hw + 3.0), 1.1, Color(1.0, 0.98, 0.85))
 	circle(ci, Vector2(hl - 0.6, hw - 3.0), 1.1, Color(1.0, 0.98, 0.85))
 
-func steam(ci: CanvasItem, l: float, w: float, col: Color, _seed: int) -> void:
+func steam(ci, l: float, w: float, col: Color, _seed: int) -> void:
 	var hl := l * 0.5
 	var hw := w * 0.5
 	rr(ci, 0.0, 0.0, l, w, 2.5, Color(0.15, 0.15, 0.17), Color(0.05, 0.05, 0.05))
@@ -122,7 +131,7 @@ func steam(ci: CanvasItem, l: float, w: float, col: Color, _seed: int) -> void:
 	rr(ci, -hl + 13.5, 0.0, 1.6, w - 4.0, 0.5, col.darkened(0.4))
 	circle(ci, Vector2(hl - 0.5, 0.0), 1.2, Color(1.0, 0.95, 0.75))
 
-func tender(ci: CanvasItem, l: float, w: float, col: Color, seed: int) -> void:
+func tender(ci, l: float, w: float, col: Color, seed: int) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	rr(ci, 0.0, 0.0, l, w, 2.5, col, col.darkened(0.55))
@@ -133,7 +142,7 @@ func tender(ci: CanvasItem, l: float, w: float, col: Color, seed: int) -> void:
 
 # --- Passenger -------------------------------------------------------------
 
-func coach(ci: CanvasItem, l: float, w: float, col: Color, _seed: int) -> void:
+func coach(ci, l: float, w: float, col: Color, _seed: int) -> void:
 	var hl := l * 0.5
 	var hw := w * 0.5
 	var roof := col.lerp(Color(0.55, 0.56, 0.58), 0.35)
@@ -149,7 +158,7 @@ func coach(ci: CanvasItem, l: float, w: float, col: Color, _seed: int) -> void:
 	rr(ci, hl - 0.5, 0.0, 2.2, w - 8.0, 0.6, Color(0.1, 0.1, 0.1))
 	rr(ci, -hl + 0.5, 0.0, 2.2, w - 8.0, 0.6, Color(0.1, 0.1, 0.1))
 
-func caboose(ci: CanvasItem, l: float, w: float, col: Color, _seed: int) -> void:
+func caboose(ci, l: float, w: float, col: Color, _seed: int) -> void:
 	var hl := l * 0.5
 	rr(ci, 0.0, 0.0, l, w, 2.0, Color(0.18, 0.17, 0.17), Color(0.05, 0.05, 0.05))
 	rr(ci, 0.0, 0.0, l - 8.0, w, 2.0, col, col.darkened(0.55))
@@ -163,7 +172,7 @@ func caboose(ci: CanvasItem, l: float, w: float, col: Color, _seed: int) -> void
 
 # --- Freight ---------------------------------------------------------------
 
-func boxcar(ci: CanvasItem, l: float, w: float, col: Color, _seed: int) -> void:
+func boxcar(ci, l: float, w: float, col: Color, _seed: int) -> void:
 	var hl := l * 0.5
 	var hw := w * 0.5
 	rr(ci, 0.0, 0.0, l, w, 1.8, col, col.darkened(0.55))
@@ -175,7 +184,7 @@ func boxcar(ci: CanvasItem, l: float, w: float, col: Color, _seed: int) -> void:
 	rr(ci, hl - 1.2, 0.0, 1.6, w - 4.0, 0.4, col.darkened(0.35))
 	rr(ci, -hl + 1.2, 0.0, 1.6, w - 4.0, 0.4, col.darkened(0.35))
 
-func tanker(ci: CanvasItem, l: float, w: float, col: Color, _seed: int) -> void:
+func tanker(ci, l: float, w: float, col: Color, _seed: int) -> void:
 	rr(ci, 0.0, 0.0, l, w - 3.0, 1.5, STEEL_DARK)
 	var tl := l - 5.0
 	rr(ci, 0.0, 0.0, tl, w, w * 0.5, col, col.darkened(0.55))
@@ -186,7 +195,7 @@ func tanker(ci: CanvasItem, l: float, w: float, col: Color, _seed: int) -> void:
 	circle(ci, Vector2.ZERO, 3.4, col.darkened(0.1), col.darkened(0.5))
 	ci.draw_circle(Vector2(-0.9, -0.9), 1.2, col.lightened(0.4))
 
-func hopper(ci: CanvasItem, l: float, w: float, col: Color, seed: int) -> void:
+func hopper(ci, l: float, w: float, col: Color, seed: int) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	rr(ci, 0.0, 0.0, l, w, 1.8, col, col.darkened(0.55))
@@ -197,7 +206,7 @@ func hopper(ci: CanvasItem, l: float, w: float, col: Color, seed: int) -> void:
 		ci.draw_line(Vector2(x, -w * 0.5 + 1.5), Vector2(x, w * 0.5 - 1.5), col.darkened(0.2), 1.2)
 	ci.draw_line(Vector2(-l * 0.5 + 1.0, -w * 0.5 + 1.0), Vector2(l * 0.5 - 1.0, -w * 0.5 + 1.0), col.lightened(0.3), 0.8, true)
 
-func logs(ci: CanvasItem, l: float, w: float, _col: Color, seed: int) -> void:
+func logs(ci, l: float, w: float, _col: Color, seed: int) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	var hl := l * 0.5
@@ -220,7 +229,7 @@ func logs(ci: CanvasItem, l: float, w: float, _col: Color, seed: int) -> void:
 		for y in [-w * 0.5 + 0.8, w * 0.5 - 0.8]:
 			ci.draw_rect(Rect2(x - 0.9, y - 0.9, 1.8, 1.8), Color(0.12, 0.12, 0.13))
 
-func container(ci: CanvasItem, l: float, w: float, col: Color, seed: int) -> void:
+func container(ci, l: float, w: float, col: Color, seed: int) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	rr(ci, 0.0, 0.0, l, w - 4.0, 1.0, Color(0.22, 0.22, 0.24), Color(0.08, 0.08, 0.09))

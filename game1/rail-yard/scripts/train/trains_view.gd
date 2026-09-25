@@ -11,65 +11,73 @@ class_name TrainsView
 const SUN := Vector2(3.5, 4.5)
 
 var main: Node
+## Every mesh this frame's draw commands point at. Keeping the references
+## here guarantees none is freed (say, by WagonCatalog trimming its cache)
+## before the frame has been rendered.
+var _held: Array = []
+var _couplers := TriBatch.new()
 
+## Cars, shadows and bogies are baked meshes (WagonCatalog.car_mesh & co.)
+## just re-placed each frame, so a frame is a few dozen draw calls however
+## detailed the art -- not thousands of shapes rebuilt from scratch.
 func _draw() -> void:
 	var trains: Array = main.trains
-	var art: WagonArt = WagonCatalog.art
 	var playing: bool = main.mode == main.MODE_PLAY
+	var held: Array = []
 	for t in trains:
 		for i in range(t.world.size()):
 			var w: Dictionary = t.world[i]
 			var z: float = t.bounce[i]
 			var off: Vector2 = SUN * (1.0 + z * 0.12) + w["n"] * t.sway[i] * 1.1 + w["dir"] * t.pitch[i]
-			draw_set_transform(w["center"] + off, (w["dir"] as Vector2).angle())
-			art.shadow(self, w["len"], w["width"], Color(0, 0, 0, 0.3))
-	draw_set_transform(Vector2.ZERO, 0.0)
+			var shadow := WagonCatalog.shadow_mesh(w["len"], w["width"])
+			held.append(shadow)
+			draw_mesh(shadow, null, Transform2D((w["dir"] as Vector2).angle(), w["center"] + off))
 	if playing:
 		for t in trains:
 			_draw_headlights(t)
 	for t in trains:
 		for i in range(t.world.size()):
 			var w: Dictionary = t.world[i]
-			_draw_bogie(art, w["pf"], w["tf"], w["width"])
-			_draw_bogie(art, w["pr"], w["tr"], w["width"])
-	draw_set_transform(Vector2.ZERO, 0.0)
+			var bogie := WagonCatalog.bogie_mesh(w["width"])
+			held.append(bogie)
+			draw_mesh(bogie, null, Transform2D((w["tf"] as Vector2).angle(), w["pf"]))
+			draw_mesh(bogie, null, Transform2D((w["tr"] as Vector2).angle(), w["pr"]))
+	_couplers.clear()
 	for t in trains:
-		_draw_couplers(t)
+		_draw_couplers(_couplers, t)
+	var coupler_mesh := _couplers.to_mesh()
+	if coupler_mesh != null:
+		held.append(coupler_mesh)
+		draw_mesh(coupler_mesh, null)
 	for t in trains:
 		for i in range(t.world.size()):
 			var w: Dictionary = t.world[i]
 			var sc: float = 1.0 + t.bounce[i] * 0.012
 			var center: Vector2 = w["center"] + w["n"] * t.sway[i] * 0.35
-			draw_set_transform(center, (w["dir"] as Vector2).angle(), Vector2(sc, sc))
-			WagonCatalog.paint(t.cars[i]["type"], self, t.cars[i])
-	draw_set_transform(Vector2.ZERO, 0.0)
+			var body := WagonCatalog.car_mesh(t.cars[i])
+			held.append(body)
+			draw_mesh(body, null, Transform2D((w["dir"] as Vector2).angle(), Vector2(sc, sc), 0.0, center))
+	_held = held
 	for t in trains:
 		if not t.running and not t.world.is_empty() and t.has_power():
 			_draw_stopped_marker(t)
 	var sel = main.selected_train
 	if sel != null and not playing and not sel.world.is_empty():
-		_draw_selection(art, sel)
+		_draw_selection(WagonCatalog.art, sel)
 
-func _draw_bogie(art: WagonArt, p: Vector2, tangent: Vector2, width: float) -> void:
-	draw_set_transform(p, tangent.angle())
-	art.rr(self, 0.0, 0.0, 15.0, width - 3.0, 1.5, Color(0.1, 0.1, 0.11))
-	for x in [-4.5, 4.5]:
-		for y in [-6.2, 6.2]:
-			draw_rect(Rect2(x - 2.2, y - 1.1, 4.4, 2.2), Color(0.32, 0.32, 0.34))
-
-func _draw_couplers(t) -> void:
+func _draw_couplers(b: TriBatch, t) -> void:
 	var w: Array = t.world
 	for i in range(w.size() - 1):
 		var a: Vector2 = w[i]["back"] + w[i]["n"] * t.sway[i] * 0.35
-		var b: Vector2 = w[i + 1]["front"] + w[i + 1]["n"] * t.sway[i + 1] * 0.35
-		draw_line(a, b, Color(0.08, 0.08, 0.09), 3.0, true)
-		draw_circle(a.lerp(b, 0.5), 1.8, Color(0.25, 0.25, 0.27))
+		var c: Vector2 = w[i + 1]["front"] + w[i + 1]["n"] * t.sway[i + 1] * 0.35
+		b.draw_line(a, c, Color(0.08, 0.08, 0.09), 3.0, true)
+		b.draw_circle(a.lerp(c, 0.5), 1.8, Color(0.25, 0.25, 0.27))
 		# Buffers: two little pads either side of the coupler.
 		for side in [-1.0, 1.0]:
 			var na: Vector2 = w[i]["n"] * side * 6.0
-			var nb: Vector2 = w[i + 1]["n"] * side * 6.0
-			draw_line(a + na, a + na - w[i]["dir"] * 1.8, Color(0.12, 0.12, 0.13), 2.2)
-			draw_line(b + nb, b + nb + w[i + 1]["dir"] * 1.8, Color(0.12, 0.12, 0.13), 2.2)
+			var nc: Vector2 = w[i + 1]["n"] * side * 6.0
+			b.draw_line(a + na, a + na - w[i]["dir"] * 1.8, Color(0.12, 0.12, 0.13), 2.2)
+			b.draw_line(c + nc, c + nc + w[i + 1]["dir"] * 1.8, Color(0.12, 0.12, 0.13), 2.2)
 
 ## A soft light cone ahead of the lead loco (car 0 always faces forward).
 func _draw_headlights(t) -> void:

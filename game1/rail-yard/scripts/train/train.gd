@@ -242,10 +242,11 @@ func plan(delta: float, net: TrackNetwork, trains: Array) -> float:
 	var free: float = look["dead"] - 6.0
 	var pts: PackedVector2Array = look["points"]
 	var by_train := false
+	var near := _cars_near(pts, trains, lead)
 	for k in range(pts.size()):
 		if k * PEEK_STEP >= free:
 			break
-		if _blocked_at(pts[k], trains, lead):
+		if _blocked_at(pts[k], near):
 			free = k * PEEK_STEP - 10.0
 			by_train = true
 			break
@@ -266,16 +267,31 @@ func plan(delta: float, net: TrackNetwork, trains: Array) -> float:
 		_block_timer = 0.0
 	return target
 
-func _blocked_at(p: Vector2, trains: Array, own_lead: int) -> bool:
+## The obstacle points (centre, bogies, ends) of every car -- other than
+## our own leading one -- that could be near any of `pts`.
+func _cars_near(pts: PackedVector2Array, trains: Array, own_lead: int) -> Array:
+	var out := []
+	if pts.is_empty():
+		return out
+	var box := Rect2(pts[0], Vector2.ZERO)
+	for p in pts:
+		box = box.expand(p)
 	for t in trains:
 		var w: Array = t.world
 		for i in range(w.size()):
 			if t == self and i == own_lead:
 				continue
 			var car: Dictionary = w[i]
-			for q in [car["center"], car["pf"], car["pr"], car["front"], car["back"]]:
-				if p.distance_squared_to(q) < BLOCK_RADIUS * BLOCK_RADIUS:
-					return true
+			# All five points lie within half a car length of the centre.
+			if box.grow(car["len"] * 0.5 + BLOCK_RADIUS + 1.0).has_point(car["center"]):
+				out.append(PackedVector2Array([car["center"], car["pf"], car["pr"], car["front"], car["back"]]))
+	return out
+
+static func _blocked_at(p: Vector2, near: Array) -> bool:
+	for car_pts in near:
+		for q in car_pts:
+			if p.distance_squared_to(q) < BLOCK_RADIUS * BLOCK_RADIUS:
+				return true
 	return false
 
 func _avg_v() -> float:
@@ -291,14 +307,20 @@ func simulate(delta: float, target: float) -> void:
 	if not is_placed():
 		return
 	var n := cars.size()
+	# Per-car constants, looked up once rather than in every substep.
 	var masses := []
+	var lens := []
 	var total := 0.0
 	var powered := []
 	for i in range(n):
 		masses.append(car_mass(i))
+		lens.append(car_len(i))
 		total += masses[i]
 		if is_powered(i):
 			powered.append(i)
+	var rests := []
+	for i in range(n - 1):
+		rests.append((lens[i] + lens[i + 1]) * 0.5 + GAP)
 	var h := delta / SUBSTEPS
 	var f := _zeros(n)
 	for _sub in range(SUBSTEPS):
@@ -306,7 +328,12 @@ func simulate(delta: float, target: float) -> void:
 		if not powered.is_empty():
 			# P-control on the train's mean speed, plus feed-forward for
 			# rolling resistance so it settles at exactly `target`.
-			var va := _avg_v()
+			var m := 0.0
+			var mv := 0.0
+			for i in range(n):
+				m += masses[i]
+				mv += masses[i] * v[i]
+			var va := mv / m if m > 0.0 else 0.0
 			var err := target * direction - va
 			var gain := GAIN if err * direction > 0.0 else GAIN_BRAKE
 			var drive := clampf((err * gain + va * ROLL) * total, -A_BRAKE * total, A_MAX * total)
@@ -314,8 +341,7 @@ func simulate(delta: float, target: float) -> void:
 			for i in powered:
 				f[i] += drive / powered.size()
 		for i in range(n - 1):
-			var rest := (car_len(i) + car_len(i + 1)) * 0.5 + GAP
-			var ext: float = (s[i] - s[i + 1]) - rest
+			var ext: float = (s[i] - s[i + 1]) - rests[i]
 			var rel: float = v[i] - v[i + 1]
 			var force := 0.0
 			if ext > SLACK:
@@ -329,11 +355,11 @@ func simulate(delta: float, target: float) -> void:
 		for i in range(n):
 			f[i] -= v[i] * masses[i] * ROLL
 		if route.dead_front:
-			var pen: float = s[0] + car_len(0) * 0.5 - (route.end_s - 2.0)
+			var pen: float = s[0] + lens[0] * 0.5 - (route.end_s - 2.0)
 			if pen > 0.0:
 				f[0] -= K_STOP * pen + C_STOP * maxf(v[0], 0.0)
 		if route.dead_back:
-			var pen_b: float = (route.start_s + 2.0) - (s[n - 1] - car_len(n - 1) * 0.5)
+			var pen_b: float = (route.start_s + 2.0) - (s[n - 1] - lens[n - 1] * 0.5)
 			if pen_b > 0.0:
 				f[n - 1] += K_STOP * pen_b - C_STOP * minf(v[n - 1], 0.0)
 		for i in range(n):
