@@ -103,7 +103,8 @@ Starter prompt for a new session:
 - **4.7.2, not the 4.3 the Web demos use**: Play needs 16 KB aligned
   libraries (see docs/game1.md) and `CameraServer` only gained Android
   support in 4.5-era releases. The project therefore declares 4.7 in
-  `config/features` and is *not* part of the 4.3 Pages export loop.
+  `config/features`; the Pages workflow builds each demo with the Godot
+  version its project declares.
   **Verify in Phase 0** that 4.7.2's camera feed on Android works headed
   for the front camera (if not, Phase 6 uses a plugin instead).
 - Renderer: `gl_compatibility` (same as game1; widest phone coverage).
@@ -133,8 +134,10 @@ Every sensor goes through one `Senses` autoload (Phase 1) that, when no
 real sensor is present, maps: mouse drag with right button → tilt,
 arrow keys → shake / steps, `Space` held → mic loudness, `H` → haptic
 logged on screen. This keeps every rite testable on a laptop and in a
-headless run. A Web export (4.7.2, nothreads) is a dev convenience only;
-it is **not** added to the Pages workflow until someone asks.
+headless run. The Web export (4.7.2, nothreads) is published on every
+push to main at `bvandersen.github.io/playground/game3/vigil/` (not
+committed; `.github/workflows/game2-pages.yml` picks up every
+`game*/*/` with a "Web" preset automatically).
 
 ### The daily draw
 

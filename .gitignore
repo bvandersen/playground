@@ -13,3 +13,7 @@ game3/*/.godot/
 # game1 Android builds (scripts/game1-android.sh) -- built on demand, never
 # committed, unlike the Web export
 /build/
+
+# game3+ Web exports: built from source by the Pages workflow on every push
+# (.github/workflows/game2-pages.yml), never committed
+/static/game3/

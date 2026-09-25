@@ -1,31 +1,27 @@
-# game2 (docs/game2.md) demos are Godot HTML5 exports -- their .wasm
-# files routinely exceed Cloudflare Workers' 25 MiB per-asset limit
-# (Bounce Melody's is ~34 MiB), so they can't go out through the main
-# site's own deploy (daily-deploy.yml / wrangler). GitHub Pages has no
-# such per-file limit, and deploying here is completely independent of
-# the real site: it publishes to this repo's own github.io project
-# page, never the oraclecardoftheday.com custom domain, so this can
-# never affect or break the live site or its daily deploy.
+# Godot demos (game1/, game2/, game3/, ... -- see docs/game*.md) are
+# HTML5 exports whose .wasm files routinely exceed Cloudflare Workers'
+# 25 MiB per-asset limit (Bounce Melody's is ~34 MiB), so they can't go
+# out through the main site's own deploy (daily-deploy.yml / wrangler).
+# GitHub Pages has no such per-file limit, and deploying here is
+# completely independent of the real site: it publishes to this repo's
+# own github.io project page, never the oraclecardoftheday.com custom
+# domain, so this can never affect or break the live site or its daily
+# deploy.
 #
-# Publishes one game2 demo folder as the Pages site's root (not the
-# static/game2/ index) -- a demo's own asset references (index.js/.wasm/
-# .pck) are already relative, so it just works served from any path,
-# while static/game2/index.html's own links are absolute (/game2/...)
-# and would break under a github.io project-page subpath. Pick a
-# different demo by changing DEMO below.
+# Every demo is found automatically: any game<N>/<demo>/ with a
+# project.godot and an export preset named "Web" is exported and
+# published at /game<N>/<demo>/ -- a new demo needs no change here. Each
+# is built with the Godot its project.godot declares (config/features
+# "4.3", "4.7", ...), resolved to that release's newest stable patch.
+# ROOT_DEMO is also published as the site root (its URL predates the
+# others); /demos/ lists them all.
 #
-# game1 (docs/game1.md) is exported the same way and rides along in the
-# same Pages site under game1/<demo>/ -- again fine thanks to relative
-# asset paths -- so adding it never moves the existing root URL. Further
-# game2 demos (GAME2_DEMOS) ride along the same way under game2/<demo>/.
-#
-# Every push to main releases: the workflow exports each demo from its
-# Godot source itself (Godot 4.3 + the nothreads Web templates, cached),
-# so a commit that only changes game1/ or game2/ source still goes out.
-# The exports committed under static/ are overwritten by the fresh ones
-# on the runner; they stay in the repo as the last known-good build.
+# Every push to main releases: each demo is exported from its Godot
+# source here (nothreads Web templates, cached), so a commit that only
+# changes a demo's source still goes out. Exports committed under
+# static/ are overwritten on the runner by the fresh ones.
 
-name: game1 + game2 Pages (large-asset demos)
+name: Godot demos Pages
 
 on:
   workflow_dispatch:
@@ -33,10 +29,7 @@ on:
     branches: [main]
 
 env:
-  DEMO: bounce-melody
-  GAME2_DEMOS: ragdoll-meme
-  GAME1_DEMOS: rail-yard
-  GODOT_VERSION: 4.3
+  ROOT_DEMO: game2/bounce-melody
 
 permissions:
   contents: read
@@ -58,46 +51,82 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Find demos
+        id: find
+        run: |
+          # "game1/rail-yard 4.3" per line: every project with a Web preset.
+          : > /tmp/demos.txt
+          for proj in game*/*/project.godot; do
+            dir=$(dirname "$proj")
+            grep -q '^name="Web"' "$dir/export_presets.cfg" 2>/dev/null || continue
+            minor=$(grep -oP '^config/features=PackedStringArray\("\K[0-9]+\.[0-9]+' "$proj" || true)
+            if [ -z "$minor" ]; then echo "::error::$proj declares no Godot version in config/features"; exit 1; fi
+            echo "$dir $minor" >> /tmp/demos.txt
+          done
+          cat /tmp/demos.txt
+          # Newest stable patch of each minor (4.7 -> 4.7.2), probed on the
+          # release downloads so a new minor needs no table here.
+          : > /tmp/versions.txt
+          for minor in $(cut -d' ' -f2 /tmp/demos.txt | sort -u); do
+            full=""
+            for patch in 9 8 7 6 5 4 3 2 1 ""; do
+              v="$minor${patch:+.$patch}"
+              code=$(curl -sI -o /dev/null -w '%{http_code}' \
+                "https://github.com/godotengine/godot/releases/download/${v}-stable/Godot_v${v}-stable_linux.x86_64.zip")
+              if [ "$code" = 302 ] || [ "$code" = 200 ]; then full="$v"; break; fi
+            done
+            if [ -z "$full" ]; then echo "::error::no stable Godot release for $minor"; exit 1; fi
+            echo "$minor $full" >> /tmp/versions.txt
+          done
+          cat /tmp/versions.txt
+          echo "key=godot-web-nothreads-$(cut -d' ' -f2 /tmp/versions.txt | paste -sd- -)" >> "$GITHUB_OUTPUT"
       - name: Cache Godot
         id: godot-cache
         uses: actions/cache@v4
         with:
           path: |
             ~/godot
-            ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.stable
-          key: godot-${{ env.GODOT_VERSION }}-web-nothreads
-      - name: Install Godot ${{ env.GODOT_VERSION }}
+            ~/.local/share/godot/export_templates
+          key: ${{ steps.find.outputs.key }}
+      - name: Install Godot
         if: steps.godot-cache.outputs.cache-hit != 'true'
         run: |
-          base=https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable
-          mkdir -p ~/godot
-          curl -sSLf -o /tmp/godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
-          unzip -q -o /tmp/godot.zip -d ~/godot
-          mv ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 ~/godot/godot
-          # The full template archive is ~1 GB; keep only the Web
-          # (nothreads) ones every preset here uses.
-          curl -sSLf -o /tmp/tpl.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
-          tpl=~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
-          mkdir -p "$tpl"
-          unzip -q -j -o /tmp/tpl.tpz 'templates/web_nothreads_*' 'templates/version.txt' -d "$tpl"
-          rm /tmp/godot.zip /tmp/tpl.tpz
+          while read -r minor v; do
+            [ -x ~/godot/$v/godot ] && continue
+            base=https://github.com/godotengine/godot/releases/download/${v}-stable
+            mkdir -p ~/godot/$v
+            curl -sSLf -o /tmp/godot.zip "$base/Godot_v${v}-stable_linux.x86_64.zip"
+            unzip -q -o /tmp/godot.zip -d ~/godot/$v
+            mv ~/godot/$v/Godot_v${v}-stable_linux.x86_64 ~/godot/$v/godot
+            # The full template archive is ~1 GB; keep only the Web
+            # (nothreads) ones every preset here uses.
+            curl -sSLf -o /tmp/tpl.tpz "$base/Godot_v${v}-stable_export_templates.tpz"
+            tpl=~/.local/share/godot/export_templates/${v}.stable
+            mkdir -p "$tpl"
+            unzip -q -j -o /tmp/tpl.tpz 'templates/web_nothreads_*' 'templates/version.txt' -d "$tpl"
+            rm /tmp/godot.zip /tmp/tpl.tpz
+          done < /tmp/versions.txt
       - name: Export demos from source
         run: |
           set -o pipefail
-          export_demo() { # <game folder> <demo>
-            p="$1/$2"
-            ~/godot/godot --headless --editor --quit --path "$p" > /dev/null 2>&1 || true
-            ~/godot/godot --headless --path "$p" --export-release "Web" 2>&1 | tee "/tmp/export-$2.log"
+          while read -r dir minor; do
+            v=$(awk -v m="$minor" '$1 == m {print $2}' /tmp/versions.txt)
+            game=${dir%%/*}; demo=${dir#*/}
+            out="$PWD/static/$game/$demo"
+            mkdir -p "$out"
+            echo "::group::$dir (Godot $v)"
+            ~/godot/$v/godot --headless --editor --quit --path "$dir" > /dev/null 2>&1 || true
+            # Exported to static/<game>/<demo>/ whatever the preset's own
+            # export_path says.
+            ~/godot/$v/godot --headless --path "$dir" --export-release "Web" "$out/index.html" 2>&1 | tee "/tmp/export-$game-$demo.log"
+            echo "::endgroup::"
             # A script parse error still exports with exit code 0 (the broken
             # script is just logged), so fail on any ERROR in the log.
-            if grep -q "ERROR" "/tmp/export-$2.log"; then
-              echo "::error::export of $p failed"; exit 1
+            if grep -q "ERROR" "/tmp/export-$game-$demo.log"; then
+              echo "::error::export of $dir failed"; exit 1
             fi
-            node scripts/game2-postexport.mjs "$2" "$1"
-          }
-          export_demo game2 "$DEMO"
-          for d in ${GAME2_DEMOS}; do export_demo game2 "$d"; done
-          for d in ${GAME1_DEMOS}; do export_demo game1 "$d"; done
+            node scripts/game2-postexport.mjs "$demo" "$game"
+          done < /tmp/demos.txt
       - uses: actions/configure-pages@v5
         with:
           # Pages has never been enabled for this repo -- configure-
@@ -108,16 +137,20 @@ jobs:
           enablement: true
       - name: Assemble site
         run: |
-          mkdir -p _site
-          cp -r static/game2/${DEMO}/. _site/
-          for d in ${GAME2_DEMOS}; do
-            mkdir -p _site/game2/$d
-            cp -r static/game2/$d/. _site/game2/$d/
-          done
-          for d in ${GAME1_DEMOS}; do
-            mkdir -p _site/game1/$d
-            cp -r static/game1/$d/. _site/game1/$d/
-          done
+          mkdir -p _site/demos
+          cp -r "static/${ROOT_DEMO:?}/." _site/
+          {
+            echo '<!doctype html><meta charset="utf-8"><meta name="robots" content="noindex, nofollow">'
+            echo '<meta name="viewport" content="width=device-width, initial-scale=1"><title>Demos (unlisted)</title>'
+            echo '<style>body{font:18px/1.6 system-ui,sans-serif;margin:2rem;background:#111;color:#ddd}a{color:#9cf}</style><h1>Demos</h1><ul>'
+            while read -r dir minor; do
+              mkdir -p "_site/$dir"
+              cp -r "static/$dir/." "_site/$dir/"
+              title=$(grep -oP '^config/name="\K[^"]+' "$dir/project.godot" || echo "$dir")
+              echo "<li><a href=\"../$dir/\">$title</a> <small>$dir</small></li>"
+            done < /tmp/demos.txt
+            echo '</ul>'
+          } > _site/demos/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
