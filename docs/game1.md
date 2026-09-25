@@ -20,6 +20,20 @@ the GitHub Pages deploy) applies here unchanged and isn't repeated.
 
 - **Design mode**: a top strip with `Play`, and the tools `Select`,
   `Draw`, `Erase`, `+Train`, plus `Menu`.
+  Every button is a picture rather than a word, so a child who can't
+  read yet can use it (`IconArt` in `scripts/ui/icon_art.gd` draws them
+  procedurally, `IconButton` shows one; the words stay as tooltips):
+  ▶/■ play/stop, a hand (Select), a pencil (Draw), an eraser (Erase), a
+  steam engine with a green + (+Train), ≡ (Menu), a curly back arrow
+  (Undo); in the menu four corners around a loop (Fit view), a magic
+  wand (Demo layout), a bin (Clear all / delete a save), arrow-into-box /
+  arrow-out-of-box (Save / Load), circling arrows (auto-save on/off) and
+  rewind (reset trains on stop on/off); in the train sheet an arrow
+  (which way it sets off), a U-turn (Turn around), ▶/⏸ (Runs), an eye
+  (Follow), a bin (Delete) and a tick (Done). The consist and the
+  "add a wagon" buttons are little wagons painted by `WagonArt` itself,
+  with a red × or green + badge. Emoji aren't used because the Web export
+  has no system-font fallback to draw them.
   - **Draw**: drag a finger/mouse to lay track. The stroke is thinned,
     smoothed (Chaikin corner cutting) and resampled every 5 px. If it
     starts or ends on existing track it's bent to join *tangentially*

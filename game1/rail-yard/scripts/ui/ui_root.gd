@@ -22,26 +22,27 @@ const HINTS := {
 var main: Node
 
 var top_strip: PanelContainer
-var mode_button: Button
+var mode_button: IconButton
 var tool_buttons := {}
-var menu_button: Button
+var menu_button: IconButton
 var hint_panel: PanelContainer
 var hint_label: Label
-var undo_button: Button
+var undo_button: IconButton
 
 var train_sheet: PanelContainer
 var speed_field: NumberField
-var running_check: CheckBox
-var direction_button: Button
+var running_button: IconButton
+var direction_button: IconButton
 var consist_grid: GridContainer
+var add_car_buttons := {}
 
 var menu_sheet: PanelContainer
 var slot_name_edit: LineEdit
 var saves_status: Label
 var saves_scroll: ScrollContainer
 var saves_list: VBoxContainer
-var autosave_check: CheckBox
-var reset_check: CheckBox
+var autosave_button: IconButton
+var reset_button: IconButton
 
 var current_train: Train = null
 var _message_time := 0.0
@@ -177,9 +178,10 @@ func _row(parent: Node, label_text: String = "") -> HBoxContainer:
 		row.add_child(label)
 	return row
 
-func _button(parent: Node, text: String, handler: Callable, expand: bool = false) -> Button:
-	var b := Button.new()
-	b.text = text
+## Every button is a picture a child can read (IconArt); the words are
+## kept as its tooltip.
+func _icon_button(parent: Node, id: String, tip: String, handler: Callable, expand: bool = false) -> IconButton:
+	var b := IconButton.new(id, tip)
 	b.pressed.connect(handler)
 	if expand:
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -222,20 +224,21 @@ func _build_top_strip() -> void:
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	top_strip.add_child(row)
 
-	mode_button = _button(row, "Play", func(): main.toggle_mode())
-	mode_button.custom_minimum_size = Vector2(62, 0)
+	mode_button = _icon_button(row, "play", "Play", func(): main.toggle_mode())
+	mode_button.custom_minimum_size = Vector2(62, 40)
 
 	var group := ButtonGroup.new()
-	for spec in [["select", "Select"], ["draw", "Draw"], ["erase", "Erase"], ["train", "+Train"]]:
-		var b := Button.new()
-		b.text = spec[1]
+	for spec in [["select", "hand", "Select"], ["draw", "pencil", "Draw"], ["erase", "eraser", "Erase"], ["train", "train", "Add a train"]]:
+		var b := IconButton.new(spec[1], spec[2])
+		if spec[0] == "train":
+			b.badge = "plus"
 		b.toggle_mode = true
 		b.button_group = group
 		b.pressed.connect(func(): main.set_tool(spec[0]))
 		row.add_child(b)
 		tool_buttons[spec[0]] = b
 
-	menu_button = _button(row, "Menu", _toggle_menu)
+	menu_button = _icon_button(row, "menu", "Menu", _toggle_menu)
 
 func _build_hint() -> void:
 	hint_panel = PanelContainer.new()
@@ -255,13 +258,12 @@ func _build_hint() -> void:
 	hint_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hint_panel.add_child(hint_label)
 
-	undo_button = Button.new()
-	undo_button.text = "Undo"
+	undo_button = IconButton.new("undo", "Undo", Vector2(56, 44))
 	undo_button.pressed.connect(func(): main.undo())
 	undo_button.anchor_left = 1.0
 	undo_button.anchor_right = 1.0
 	undo_button.offset_right = -10.0
-	undo_button.offset_left = -80.0
+	undo_button.offset_left = -66.0
 	undo_button.offset_top = TOP_STRIP_HEIGHT + 8.0
 	undo_button.offset_bottom = TOP_STRIP_HEIGHT + 8.0
 	undo_button.visible = false
@@ -277,7 +279,7 @@ func _update_hint() -> void:
 
 func _place_hint() -> void:
 	# Leave room for the Undo button on the right when it's showing.
-	hint_panel.offset_right = -96.0 if undo_button.visible else -10.0
+	hint_panel.offset_right = -74.0 if undo_button.visible else -10.0
 
 func show_message(text: String, seconds: float = 3.0) -> void:
 	hint_label.text = text
@@ -312,38 +314,43 @@ func _build_train_sheet() -> void:
 	col.add_child(speed_field)
 
 	var actions := _row(col)
-	direction_button = _button(actions, "Reverse", _on_reverse_pressed, true)
-	_button(actions, "Turn around", _on_turn_pressed, true)
-	running_check = CheckBox.new()
-	running_check.text = "Runs"
-	running_check.toggled.connect(_on_running_toggled)
-	actions.add_child(running_check)
+	direction_button = _icon_button(actions, "arrow_right", "Which way it sets off", _on_reverse_pressed, true)
+	_icon_button(actions, "turn", "Turn around", _on_turn_pressed, true)
+	running_button = IconButton.new("play", "Runs when you press Play")
+	running_button.toggle_mode = true
+	running_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	running_button.toggled.connect(_on_running_toggled)
+	actions.add_child(running_button)
 
-	col.add_child(_small_label("Cars, front first -- tap one to uncouple it:"))
+	col.add_child(_small_label("Tap a wagon to take it off:"))
 	consist_grid = GridContainer.new()
 	consist_grid.columns = 5
 	consist_grid.add_theme_constant_override("h_separation", 5)
 	consist_grid.add_theme_constant_override("v_separation", 5)
 	col.add_child(consist_grid)
 
-	col.add_child(_small_label("Couple on at the back:"))
+	col.add_child(_small_label("Tap to add a wagon at the back:"))
 	var add_grid := GridContainer.new()
 	add_grid.columns = 5
 	add_grid.add_theme_constant_override("h_separation", 5)
 	add_grid.add_theme_constant_override("v_separation", 5)
 	col.add_child(add_grid)
 	for type in WagonCatalog.types():
-		var b := _button(add_grid, "+" + WagonCatalog.display_name(type), _on_add_car.bind(type), true)
-		b.add_theme_font_size_override("font_size", 13)
+		var b := _icon_button(add_grid, "", "Add " + WagonCatalog.display_name(type), _on_add_car.bind(type), true)
+		b.custom_minimum_size = Vector2(0, 36)
+		b.car = {"type": type, "color": WagonCatalog.entry(type)["colors"][0], "seed": 7}
+		b.badge = "plus"
+		add_car_buttons[type] = b
 
 	var bottom := _row(col)
-	_button(bottom, "Follow", _on_follow_pressed, true)
-	_button(bottom, "Delete train", _on_delete_train, true)
-	_button(bottom, "Done", func(): main.select_train(null), true)
+	_icon_button(bottom, "eye", "Follow with the camera", _on_follow_pressed, true)
+	_icon_button(bottom, "bin", "Delete train", _on_delete_train, true)
+	_icon_button(bottom, "check", "Done", func(): main.select_train(null), true)
 
 func _on_livery_input(event: InputEvent, c: Color) -> void:
 	if event is InputEventMouseButton and event.pressed and current_train != null:
 		main.set_livery(current_train, c)
+		_refresh_train_fields()
 
 func _on_speed_changed(v: float) -> void:
 	if current_train != null:
@@ -362,6 +369,7 @@ func _on_turn_pressed() -> void:
 		main.turn_train(current_train)
 
 func _on_running_toggled(on: bool) -> void:
+	running_button.set_icon("play" if on else "pause")
 	if current_train != null:
 		current_train.running = on
 		main.trains_view.queue_redraw()
@@ -387,19 +395,23 @@ func _on_delete_train() -> void:
 func _refresh_train_fields() -> void:
 	var t := current_train
 	speed_field.set_value_silently(t.speed)
-	running_check.set_pressed_no_signal(t.running)
-	direction_button.text = "Reverse (%s)" % ("fwd" if t.direction > 0 else "back")
+	running_button.set_pressed_no_signal(t.running)
+	running_button.set_icon("play" if t.running else "pause")
+	direction_button.set_icon("arrow_right" if t.direction > 0 else "arrow_left")
 	for child in consist_grid.get_children():
 		consist_grid.remove_child(child)
 		child.queue_free()
 	for i in range(t.cars.size()):
-		var b := _button(consist_grid, WagonCatalog.display_name(t.cars[i]["type"]), _on_remove_car.bind(i), true)
-		b.add_theme_font_size_override("font_size", 13)
-		var tint: Color = t.cars[i]["color"]
-		var sb := _box(Color(0.19, 0.22, 0.27))
-		sb.border_width_left = 5
-		sb.border_color = tint.lightened(0.15)
-		b.add_theme_stylebox_override("normal", sb)
+		var b := _icon_button(consist_grid, "", "Take off the " + WagonCatalog.display_name(t.cars[i]["type"]), _on_remove_car.bind(i), true)
+		b.custom_minimum_size = Vector2(0, 36)
+		b.car = t.cars[i]
+		b.badge = "cross"
+	# The add buttons show livery wagons in this train's colours.
+	for type in add_car_buttons:
+		var e := WagonCatalog.entry(type)
+		if e.get("livery", false):
+			add_car_buttons[type].car["color"] = t.livery
+			add_car_buttons[type].queue_redraw()
 
 # --- Menu sheet (save / load / layout) -------------------------------------
 
@@ -408,9 +420,9 @@ func _build_menu_sheet() -> void:
 	var col := _new_sheet_column(menu_sheet)
 
 	var view_row := _row(col)
-	_button(view_row, "Fit view", func(): main.fit_view(), true)
-	_button(view_row, "Demo layout", _on_demo_pressed, true)
-	_button(view_row, "Clear all", _on_clear_pressed, true)
+	_icon_button(view_row, "fit", "See everything", func(): main.fit_view(), true)
+	_icon_button(view_row, "wand", "Demo layout", _on_demo_pressed, true)
+	_icon_button(view_row, "bin", "Clear all", _on_clear_pressed, true)
 
 	var save_row := _row(col)
 	slot_name_edit = LineEdit.new()
@@ -418,7 +430,7 @@ func _build_menu_sheet() -> void:
 	slot_name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	slot_name_edit.text_submitted.connect(func(_t): _on_save_pressed())
 	save_row.add_child(slot_name_edit)
-	_button(save_row, "Save", _on_save_pressed)
+	_icon_button(save_row, "save", "Save", _on_save_pressed)
 
 	saves_status = Label.new()
 	col.add_child(saves_status)
@@ -430,15 +442,20 @@ func _build_menu_sheet() -> void:
 	saves_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	saves_scroll.add_child(saves_list)
 
-	autosave_check = CheckBox.new()
-	autosave_check.toggled.connect(_on_autosave_toggled)
-	col.add_child(autosave_check)
+	# On/off switches: green when on.
+	var toggles := _row(col)
+	autosave_button = IconButton.new("autosave", "")
+	autosave_button.toggle_mode = true
+	autosave_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	autosave_button.toggled.connect(_on_autosave_toggled)
+	toggles.add_child(autosave_button)
 
-	reset_check = CheckBox.new()
-	reset_check.text = "Reset trains on stop (off = freeze)"
-	reset_check.button_pressed = main.reset_on_stop
-	reset_check.toggled.connect(_on_reset_toggled)
-	col.add_child(reset_check)
+	reset_button = IconButton.new("rewind", "Put trains back where they started when you press Stop")
+	reset_button.toggle_mode = true
+	reset_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	reset_button.button_pressed = main.reset_on_stop
+	reset_button.toggled.connect(_on_reset_toggled)
+	toggles.add_child(reset_button)
 
 func _on_demo_pressed() -> void:
 	main.push_undo()
@@ -497,18 +514,18 @@ func _refresh_saves() -> void:
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		label.clip_text = true
 		row.add_child(label)
-		_button(row, "Load", _on_load_pressed.bind(slot_name))
-		_button(row, "X", _on_delete_slot_pressed.bind(slot_name))
+		_icon_button(row, "load", "Load", _on_load_pressed.bind(slot_name))
+		_icon_button(row, "bin", "Delete", _on_delete_slot_pressed.bind(slot_name))
 	if slots.is_empty():
 		var empty := Label.new()
 		empty.text = "No saved layouts yet."
 		saves_list.add_child(empty)
-	saves_scroll.custom_minimum_size.y = min(max(slots.size(), 1) * 38.0, SAVE_LIST_MAX_HEIGHT)
+	saves_scroll.custom_minimum_size.y = min(max(slots.size(), 1) * 46.0, SAVE_LIST_MAX_HEIGHT)
 
 	var has_slot: bool = main.current_slot != ""
-	autosave_check.disabled = not has_slot
-	autosave_check.set_pressed_no_signal(main.autosave_enabled)
-	autosave_check.text = ("Auto-save changes to \"%s\"" % main.current_slot) if has_slot \
+	autosave_button.disabled = not has_slot
+	autosave_button.set_pressed_no_signal(main.autosave_enabled)
+	autosave_button.tooltip_text = ("Auto-save changes to \"%s\"" % main.current_slot) if has_slot \
 		else "Auto-save (save or load a layout first)"
 	if menu_sheet.visible:
 		_fit_bottom.call_deferred(menu_sheet)
@@ -529,7 +546,8 @@ func on_selection_changed(t: Train) -> void:
 
 func on_mode_changed(mode: String) -> void:
 	var is_design: bool = mode == main.MODE_DESIGN
-	mode_button.text = "Play" if is_design else "Stop"
+	mode_button.set_icon("play" if is_design else "stop")
+	mode_button.tooltip_text = "Play" if is_design else "Stop"
 	for b in tool_buttons.values():
 		b.visible = is_design
 	menu_button.visible = is_design

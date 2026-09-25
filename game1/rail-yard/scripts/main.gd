@@ -406,7 +406,7 @@ func add_car(t: Train, type: String) -> void:
 
 func remove_car(t: Train, index: int) -> void:
 	if t.cars.size() <= 1:
-		ui.show_message("A train needs at least one car -- use Delete instead.")
+		ui.show_message("A train needs at least one car -- use the bin instead.")
 		return
 	push_undo()
 	t.cars.remove_at(index)
