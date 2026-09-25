@@ -4,6 +4,7 @@
 # can regenerate it), only the Godot source's own cache is excluded here.
 game2/*/.godot/
 game1/*/.godot/
+game3/*/.godot/
 
 # generated game2-demo index — always rebuilt by scripts/game2-index.mjs,
 # never hand-edited

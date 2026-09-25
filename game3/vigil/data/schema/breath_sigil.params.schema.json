@@ -1,0 +1,19 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "vigil/breath_sigil.params.schema.json",
+	"title": "breath_sigil params (r17 The Sigil of Breath)",
+	"type": "object",
+	"additionalProperties": false,
+	"properties": {
+		"shape": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 2, "maxItems": 2, "description": "Star polygon {n/k} inside the circle; [7, 3] is a heptagram."},
+		"rings": {"type": "integer", "minimum": 1, "maximum": 5, "description": "Concentric circles around the star."},
+		"rhythm_sets": {"type": "array", "items": {"type": "array", "items": {"type": "number", "minimum": 0}, "minItems": 4, "maxItems": 4}, "description": "Seconds of [in, hold, out, hold]; one set is chosen per day."},
+		"cycles": {"type": "integer", "minimum": 1, "maximum": 20},
+		"words_cycles": {"type": "integer", "minimum": 0, "description": "Cycles during which the phase word shows."},
+		"span": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2, "description": "Ring radius at empty and full, as a fraction of the maximum."},
+		"turn_per_cycle": {"type": "number", "description": "Turns the star rotates per cycle (signed)."},
+		"stop_at": {"type": "number", "minimum": 0, "maximum": 1, "description": "Where in the final inhale the ring freezes."},
+		"hold_at_end": {"type": "number", "minimum": 0, "description": "Seconds of stillness after the freeze before the rite ends."},
+		"color": {"type": "string", "description": "Html colour of the lines."}
+	}
+}

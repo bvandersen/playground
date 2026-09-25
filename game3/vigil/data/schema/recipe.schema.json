@@ -1,0 +1,26 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "vigil/recipe.schema.json",
+	"title": "Vigil rite recipe",
+	"description": "One rite as the user experiences it: an engine plus its knobs and copy. Packs in data/rites/*.json are {\"pack\": name, \"recipes\": [recipe, ...]}. Params are checked against data/schema/<engine>.params.schema.json. Registry.validate() enforces the parts the app relies on.",
+	"type": "object",
+	"required": ["id", "engine", "tier", "title"],
+	"additionalProperties": false,
+	"properties": {
+		"id": {"type": "string", "pattern": "^(free|deep)\\.[a-z_]+\\.[0-9]{3}$"},
+		"engine": {"type": "string", "description": "Engine id, a key of Registry.ENGINES."},
+		"chain": {"type": "array", "items": {"type": "string"}, "description": "Reserved: compound rites (two engines in sequence)."},
+		"tier": {"enum": ["free", "deep"]},
+		"title": {"type": "string", "maxLength": 40},
+		"requires": {"type": "array", "items": {"enum": ["touch", "haptics", "accel", "gyro", "mic", "camera", "location"]}},
+		"weight": {"type": "number", "exclusiveMinimum": 0, "default": 1},
+		"tags": {"type": "array", "items": {"type": "string"}},
+		"reviewed": {"type": "boolean", "default": false, "description": "Only reviewed recipes are drawn."},
+		"params": {"type": "object"},
+		"lines": {
+			"type": "object",
+			"description": "Copy overrides by key; a string, an array (one is picked), or null to use the engine's pool.",
+			"additionalProperties": {"type": ["string", "array", "null"], "items": {"type": "string"}}
+		}
+	}
+}

@@ -1,0 +1,13 @@
+{
+	"_comment": "Shown after the day's rite, until 04:00.",
+	"closing": [
+		"It is done. Carry nothing out of here.",
+		"This day is closed.",
+		"Nothing more is asked today.",
+		"Go. It will be different tomorrow."
+	],
+	"return": [
+		"Return after the fourth hour.",
+		"Something else waits after the fourth hour."
+	]
+}

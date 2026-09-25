@@ -1,0 +1,38 @@
+; Engine configuration file.
+; Hand-authored, like game1's and game2's (no interactive Godot editor is
+; used -- see docs/game3.md). Godot 4.7, not the 4.3 of the Web demos:
+; this app targets Android/iOS stores and is not in the Pages export loop.
+
+config_version=5
+
+[application]
+
+config/name="Vigil"
+run/main_scene="res://Main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+; Android Back is handled in Main._notification (leave a rite, close the
+; scroll, then quit).
+config/quit_on_go_back=false
+
+[autoload]
+
+Save="*res://scripts/core/save.gd"
+Entitlement="*res://scripts/core/entitlement.gd"
+Lines="*res://scripts/core/lines.gd"
+Registry="*res://scripts/core/registry.gd"
+Daily="*res://scripts/core/daily.gd"
+
+[display]
+
+window/size/viewport_width=480
+window/size/viewport_height=800
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation="portrait"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.027, 0.027, 0.039, 1)
+textures/vram_compression/import_etc2_astc=true

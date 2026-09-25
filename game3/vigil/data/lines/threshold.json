@@ -1,0 +1,23 @@
+{
+	"_comment": "Home screen line, by time of day. Second person, present tense, short. No exclamation marks, no praise.",
+	"dawn": [
+		"The day has not decided what it is yet.",
+		"You are awake before your name is.",
+		"Nothing has been asked of you. Yet."
+	],
+	"day": [
+		"Stop. Only here.",
+		"The noise can wait at the door.",
+		"You were somewhere else. Come back."
+	],
+	"dusk": [
+		"The light is leaving. Let it.",
+		"What you carried today, set it down here.",
+		"The edges soften. So can you."
+	],
+	"night": [
+		"Everyone else is elsewhere.",
+		"The dark is not empty. You are in it.",
+		"It is late. That is why you came."
+	]
+}

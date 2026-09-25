@@ -1,0 +1,25 @@
+{
+	"pack": "deep_001",
+	"recipes": [
+		{
+			"id": "deep.breath.001",
+			"engine": "breath_sigil",
+			"tier": "deep",
+			"title": "The Ninefold Breath",
+			"requires": [],
+			"weight": 1,
+			"tags": ["breath", "night", "long"],
+			"reviewed": true,
+			"params": {
+				"shape": [9, 4],
+				"rings": 3,
+				"rhythm_sets": [[4, 9, 4, 9], [2, 11, 5, 3]],
+				"cycles": 9,
+				"words_cycles": 1,
+				"turn_per_cycle": -0.11,
+				"hold_at_end": 12.0
+			},
+			"lines": {"in": "draw", "out": "yield"}
+		}
+	]
+}

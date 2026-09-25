@@ -1,0 +1,40 @@
+{
+	"pack": "free_core",
+	"recipes": [
+		{
+			"id": "free.breath.001",
+			"engine": "breath_sigil",
+			"tier": "free",
+			"title": "The Sigil of Breath",
+			"requires": [],
+			"weight": 1,
+			"tags": ["breath", "dawn", "dusk"],
+			"reviewed": true,
+			"params": {
+				"shape": [7, 3],
+				"rhythm_sets": [[3, 7, 2, 5], [4, 6, 3, 2], [2, 5, 4, 7], [3, 3, 6, 4]],
+				"cycles": 6
+			},
+			"lines": {}
+		},
+		{
+			"id": "free.breath.002",
+			"engine": "breath_sigil",
+			"tier": "free",
+			"title": "The Slow Pentacle",
+			"requires": [],
+			"weight": 1,
+			"tags": ["breath", "night"],
+			"reviewed": true,
+			"params": {
+				"shape": [5, 2],
+				"rhythm_sets": [[6, 2, 9, 1], [5, 1, 8, 3]],
+				"cycles": 5,
+				"turn_per_cycle": 0.2,
+				"span": [0.45, 1.0],
+				"hold_at_end": 9.0
+			},
+			"lines": {}
+		}
+	]
+}

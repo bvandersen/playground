@@ -25,7 +25,7 @@ Starter prompt for a new session:
 
 ## Status
 
-- [ ] Phase 0 — Scaffold, daily draw, threshold screens, first rite
+- [x] Phase 0 — Scaffold, daily draw, threshold screens, first rite
 - [ ] Phase 1 — Kit: synth audio, text/shader effects, Senses layer
 - [ ] Phase 2 — Touch-only rites (no permissions)
 - [ ] Phase 3 — Motion rites (accelerometer / gyroscope / haptics)
@@ -257,6 +257,7 @@ game3/vigil/
       daily.gd           autoload Daily: ritual day, seed, draw, seal
       save.gd            autoload Save: user://vigil.json, versioned
       scroll_codes.gd    code → rite id table
+      lines.gd           autoload Lines: data/lines/<pool>.json, pick(pool, key, seed)
     kit/                 Phase 1 — shared by all rites
       senses.gd          autoload Senses: sensors + fallbacks + permissions
       synth.gd           autoload Synth: sine, noise, drones, one-shots
@@ -264,6 +265,7 @@ game3/vigil/
       words.gd           Label effects: fade-in, typewriter, burn, embers
       fx/*.gdshader      noise, dissolve, negative/thermal, fog, afterimage
     screens/
+      home_sigil.gd      class_name HomeSigil: breathing sigil, tap + hidden 7 s hold
       threshold.gd       home: the sigil, one line, tap to begin
       seal.gd            after a rite: closing line, "return" hint
       scroll.gd          the Enigma Scroll
@@ -769,3 +771,31 @@ stone to polish (touch speed + coverage raise its shine shader).
 ## Done notes
 
 (append per phase, newest last)
+
+**Phase 0** (screenshots in `docs/game3/`: threshold, seal, scroll, rite).
+- Check everything: `GODOT=<4.7.2 binary> game3/vigil/tools/check.sh`
+  (import, boot, all 3 breath recipes to `done`, 30-day draw, and
+  `tools/flow_test.gd`: tap → rite → sealed → relaunch sealed, plus a dev
+  scroll code runs a rite without sealing). `tools/screenshot.gd` needs a
+  display: `xvfb-run -s "-screen 0 480x800x24" godot --path game3/vigil
+  --rendering-driver opengl3 -s tools/screenshot.gd -- <dir>`.
+- Contract changes: `Ritual` does **not** declare `ENGINE_ID` (GDScript
+  forbids a subclass redeclaring it); engines do, base has `engine_id()`.
+  Host seeds `rite.rng` before `setup()`; `setup()` merges params over
+  `get_script().defaults()`; `line(key)` = recipe `lines` then `Lines`;
+  `end(outcome)` / `leave()` emit `finished` once. `Registry.ENGINES` is
+  an explicit id → preload table (add one line per engine) and
+  `Registry.validate()` rejects unknown params (push_error → check fails).
+- `-s` tool scripts must not type anything as `Ritual` or reference
+  autoload names statically: they compile before autoloads exist. Use
+  untyped vars and `root.get_node("Registry")` after one `process_frame`.
+- `Save` honours `VIGIL_SAVE` (tests). Draw: pure `Daily.draw(day, salt,
+  history, pool, opening)`; `opening.json` has only `free.breath.001` so
+  far — extend it as engines land. With one engine the 3-day cooldown
+  falls back to "any unseen".
+- Dev codes: `0-6-3-9`, `0-6-3-10`, `0-6-3-11` (glyph indices clockwise
+  from the top) — see `scroll_codes.gd`.
+- Not done / for Phase 1: the drone (needs `Synth`), fonts (the default
+  font is used; no OFL serif added yet), grain/vignette. Web preset exists
+  but was not exported (no 4.7.2 Web templates downloaded). Camera spike:
+  **unverified** (no device or emulator reachable).
