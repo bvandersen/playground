@@ -24,6 +24,7 @@ const SOFT_BRAKE := 85.0 # planned deceleration for stopping short of things
 const LOOK := 150.0 # how far ahead it looks, px
 const LOOK_STEP := 6.0
 const KEEP := 8.0 # gap it leaves to whatever is ahead, px
+const LOOK_PAD := 3.2 # how close to another vehicle's body counts as hitting it
 const STUCK_TIME := 3.0 # s nose-to-nose at a junction before it squeezes past
 
 var look: Dictionary = {} # {type, color, seed}
@@ -51,14 +52,35 @@ var _stuck := 0.0
 var _ghost := 0.0 # s left squeezing past `_ignore`
 var _ignore = null
 
+# The catalog entry's numbers, looked up once per type rather than on
+# every call: drive() and the other vehicles' look-ahead ask for them
+# hundreds of times a tick.
+var _type := ""
+var _len := 0.0
+var _wid := 0.0
+var _trailer: Dictionary = {}
+
+func _cache() -> void:
+	var type: String = look["type"]
+	if type == _type:
+		return
+	var e := VehicleCatalog.entry(type)
+	_type = type
+	_len = float(e["length"])
+	_wid = float(e["width"])
+	_trailer = e.get("trailer", {})
+
 func length() -> float:
-	return float(VehicleCatalog.entry(look["type"])["length"])
+	_cache()
+	return _len
 
 func width() -> float:
-	return float(VehicleCatalog.entry(look["type"])["width"])
+	_cache()
+	return _wid
 
 func trailer() -> Dictionary:
-	return VehicleCatalog.entry(look["type"]).get("trailer", {})
+	_cache()
+	return _trailer
 
 func is_placed() -> bool:
 	return lane != null
@@ -203,21 +225,30 @@ func drive(delta: float, others: Array, crossings: Array) -> void:
 	# barriers down. Opposite-lane traffic is ~17 px off to the side, so
 	# it never shows up here.
 	var near := []
+	# Per nearby vehicle: its bounding radius (squared) about its centre,
+	# so most probe points are ruled out without the full box test.
+	var near_r2 := PackedFloat32Array()
 	for o in others:
 		if o != self and o.lane != null and o.pos.distance_squared_to(pos) < (LOOK + 80.0) * (LOOK + 80.0):
 			if _ghost <= 0.0 or o != _ignore:
 				near.append(o)
+				near_r2.append(o.reach_sq(LOOK_PAD))
 	# Already on a crossing: keep going, through its linked neighbours too,
 	# rather than stop on the track between two lines.
 	var on_it := []
+	var probes: Array = []
 	for c in crossings:
 		if c.kind != "level":
 			continue
-		for p in [lane.point_at(front), pos, lane.point_at(s - half)]:
-			if p.distance_to(c.pos) < c.zone():
+		if probes.is_empty():
+			probes = [lane.point_at(front), pos, lane.point_at(s - half)]
+		var z: float = c.zone()
+		for p in probes:
+			if p.distance_to(c.pos) < z:
 				on_it.append(c)
 				break
 	var shut := []
+	var shut_zone := []
 	for c in crossings:
 		if c.blocks_road() and c.pos.distance_squared_to(pos) < (LOOK + 60.0) * (LOOK + 60.0):
 			var clear := true
@@ -226,24 +257,27 @@ func drive(delta: float, others: Array, crossings: Array) -> void:
 					clear = false
 			if clear:
 				shut.append(c)
+				shut_zone.append(c.zone())
 	if not near.is_empty() or not shut.is_empty():
 		var d := 0.0
 		var first := true
 		while d <= LOOK:
 			var p := lane.point_at(front + d)
-			for o in near:
-				if o.occupies(p, 3.2):
+			for k in range(near.size()):
+				var o = near[k]
+				if p.distance_squared_to(o.pos) <= near_r2[k] and o.occupies(p, LOOK_PAD):
 					gap = d
 					blocker = o
 					break
 			if gap < INF:
 				break
-			for c in shut:
-				if p.distance_to(c.pos) < c.zone():
+			for k in range(shut.size()):
+				if p.distance_to(shut[k].pos) < shut_zone[k]:
 					if not first:
 						gap = d
 					else:
-						shut.erase(c) # already on it: drive on across
+						shut.remove_at(k) # already on it: drive on across
+						shut_zone.remove_at(k)
 					break
 			if gap < INF:
 				break
@@ -292,12 +326,26 @@ func drive(delta: float, others: Array, crossings: Array) -> void:
 
 ## True if `p` is within `pad` px of this vehicle's body (or trailer).
 func occupies(p: Vector2, pad: float) -> bool:
-	if _inside(p, pos, dir, length(), width(), pad):
+	_cache()
+	if _inside(p, pos, dir, _len, _wid, pad):
 		return true
 	if has_trailer:
-		var tr := trailer()
-		return _inside(p, trailer_pos, trailer_dir, float(tr["length"]), float(tr["width"]), pad)
+		return _inside(p, trailer_pos, trailer_dir, float(_trailer["length"]), float(_trailer["width"]), pad)
 	return false
+
+## Squared radius about `pos` outside which occupies(p, pad) is always
+## false: the corner of the body box, or the far corner of the trailer's.
+## A little slack is added so rounding never makes it disagree with
+## occupies() at the very edge.
+func reach_sq(pad: float) -> float:
+	_cache()
+	var r := Vector2(_len * 0.5 + pad, _wid * 0.5 + pad).length()
+	if has_trailer:
+		var tl := float(_trailer["length"]) * 0.5 + pad
+		var tw := float(_trailer["width"]) * 0.5 + pad
+		r = maxf(r, pos.distance_to(trailer_pos) + Vector2(tl, tw).length())
+	r += 0.5
+	return r * r
 
 static func _inside(p: Vector2, c: Vector2, d: Vector2, l: float, w: float, pad: float) -> bool:
 	var q := p - c

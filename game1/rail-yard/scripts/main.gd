@@ -246,43 +246,48 @@ func _physics_process(delta: float) -> void:
 ## under each bogie, the hollow rumble of each car onto a steel bridge,
 ## and the whoosh of a train or car diving into a tunnel.
 func _feature_sounds() -> void:
+	# Keys (arrays, slow to hash) are only built for the few things
+	# actually over a feature this tick, and the diamonds and tunnels are
+	# picked out once rather than per car.
 	var seen := {}
+	var diamonds := track_crossings.filter(func(tc): return tc.kind == "diamond")
+	var tunnels := buildings.filter(func(b): return b.is_tunnel())
 	for t in trains:
 		for i in range(t.world.size()):
 			var w: Dictionary = t.world[i]
-			for tc in track_crossings:
-				if tc.kind != "diamond":
-					continue
+			for tc in diamonds:
 				for b in ["pf", "pr"]:
-					var key := [t, i, b, tc]
-					var near: bool = (w[b] as Vector2).distance_to(tc.pos) < 7.0
-					if near and not _passing.has(key):
-						Sfx.play_at("diamond", tc.pos, 0.0, randf_range(0.92, 1.08))
-					if near:
+					if (w[b] as Vector2).distance_to(tc.pos) < 7.0:
+						var key := [t, i, b, tc]
+						if not _passing.has(key):
+							Sfx.play_at("diamond", tc.pos, 0.0, randf_range(0.92, 1.08))
 						seen[key] = true
-			var up: bool = i < t.high.size() and t.high[i]
-			var key_b := [t, i, "bridge"]
-			if up and not _passing.has(key_b):
-				Sfx.play_at("bridge", w["center"], 0.0, randf_range(0.9, 1.1))
-			if up:
+			if i < t.high.size() and t.high[i]:
+				var key_b := [t, i, "bridge"]
+				if not _passing.has(key_b):
+					Sfx.play_at("bridge", w["center"], 0.0, randf_range(0.9, 1.1))
 				seen[key_b] = true
 		if not t.world.is_empty():
 			var lead: int = 0 if t.direction > 0 else t.world.size() - 1
-			var key_t := [t, "tunnel"]
-			var inside := in_tunnel(t.world[lead]["front"] if t.direction > 0 else t.world[lead]["back"])
-			if inside and not _passing.has(key_t):
-				Sfx.play_at("tunnel", t.world[lead]["center"])
-				t.sound_horn()
-			if inside:
+			if _inside_any(tunnels, t.world[lead]["front"] if t.direction > 0 else t.world[lead]["back"]):
+				var key_t := [t, "tunnel"]
+				if not _passing.has(key_t):
+					Sfx.play_at("tunnel", t.world[lead]["center"])
+					t.sound_horn()
 				seen[key_t] = true
 	for veh in vehicles:
-		var key_v := [veh, "tunnel"]
-		var inside := in_tunnel(veh.pos + veh.dir * veh.length() * 0.5)
-		if inside and not _passing.has(key_v):
-			Sfx.play_at("tunnel", veh.pos, -6.0, randf_range(1.2, 1.4))
-		if inside:
+		if _inside_any(tunnels, veh.pos + veh.dir * veh.length() * 0.5):
+			var key_v := [veh, "tunnel"]
+			if not _passing.has(key_v):
+				Sfx.play_at("tunnel", veh.pos, -6.0, randf_range(1.2, 1.4))
 			seen[key_v] = true
 	_passing = seen
+
+static func _inside_any(tunnels: Array, p: Vector2) -> bool:
+	for b in tunnels:
+		if b.inside(p):
+			return true
+	return false
 
 ## True if `p` is inside a mountain (so in a tunnel, if it's on a line).
 func in_tunnel(p: Vector2) -> bool:

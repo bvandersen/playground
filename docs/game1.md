@@ -476,6 +476,29 @@ colours and coal. Graphics-quality tiers were considered and not added:
 the cost was overhead, not detail, so tiers would have traded visuals
 for a problem that's gone.
 
+### Second pass: road traffic and feature sounds
+
+The towns, traffic and sounds added after that pass had pushed a
+physics tick back up to ~4.5 ms (native desktop, demo layout: 3 trains,
+18 road vehicles). `tools/_prof.gd` splits it up: road vehicles'
+`drive` took ~2 ms and `_feature_sounds` ~0.7 ms. Fixed with the same
+arithmetic, so nothing looks or behaves differently:
+
+- `Vehicle`: length, width and trailer are read from the catalog once
+  per type instead of on every call (the look-ahead asked hundreds of
+  times a tick), each nearby vehicle gets a bounding radius so most
+  look-ahead probe points skip the box test, and crossing zones and the
+  three "am I on it" points are worked out once per tick, not per
+  crossing.
+- `_feature_sounds`: its array keys (slow to hash) are only built for
+  cars actually on a diamond, bridge or tunnel, and diamonds and tunnel
+  mountains are picked out once per tick instead of per car.
+
+4.5 → ~2.1 ms per tick. `tools/_det.gd` runs a seeded demo and prints a
+digest of every vehicle and car position; it matched the old code
+exactly over 12,000 ticks (200 s of play). Drawing wasn't changed: it
+was already ~80 draw calls a frame.
+
 ## Android build and Google Play release
 
 Goal: ship Rail Yard as an Android app on Google Play, built headlessly
