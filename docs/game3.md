@@ -210,9 +210,14 @@ generated on the phone at runtime (privacy, cost, and tone control).
   month. One rite per day, exactly as described above.
 - **Paid** (in-world name "the Deep Rites", placeholder): the whole
   library, growing with every app update. *Still one rite per day* —
-  the scarcity is the hook and is not for sale. Paid adds: a second,
-  evening slot (dusk to 04:00), the Enigma Scroll's earned codes beyond
-  the first, and the full Reliquary (stones, crystals, gems).
+  the scarcity is the hook. Paid adds: the Enigma Scroll's earned codes
+  beyond the first, and the full Reliquary (stones, crystals, gems).
+- **Idea, undecided — an extra rite a day.** A second daily rite could
+  be a paid perk (e.g. an evening slot, dusk to 04:00) *or* a separate
+  in-app purchase / add-on bought on top. Not planned into any phase;
+  nothing is built for it until the user decides. If it goes ahead,
+  `Daily` needs a second slot per ritual day and `Entitlement` a second
+  product — both small, so no groundwork is needed now.
 - **Model (recommendation, user to confirm before Phase 11)**:
   subscription, monthly + yearly, with a one-off lifetime option; a
   7-day trial offered only after day ~10, once the habit exists.
@@ -758,8 +763,8 @@ stone to polish (touch speed + coverage raise its shine shader).
 - Pricing model: subscription (monthly + yearly + lifetime, as
   recommended), one-off unlock, or both; prices; trial length. No ads —
   they would break the tone. Before Phase 11.
-- Is an evening second slot the right paid perk, or should paid stay
-  strictly one rite a day? Before Phase 11.
+- The extra-rite-a-day idea (see "Free and paid"): drop it, make it
+  part of paid, or sell it as its own add-on. Before Phase 11.
 
 ## Done notes
 
