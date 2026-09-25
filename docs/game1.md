@@ -269,125 +269,186 @@ colours and coal. Graphics-quality tiers were considered and not added:
 the cost was overhead, not detail, so tiers would have traded visuals
 for a problem that's gone.
 
-## Plan: Android build and Google Play release (not started)
+## Android build and Google Play release
 
 Goal: ship Rail Yard as an Android app on Google Play, built headlessly
-from this same project (no interactive editor, as with the Web export).
-Google's numbers below (target API level, tester counts) change often,
-so re-check them in Play Console before relying on them.
+from this same project, with no interactive editor (the same approach as
+the Web export). Google's numbers below (target API level, tester
+counts, page size) change often, so re-check them in Play Console.
 
 ### Status
 
-- [ ] 1. Toolchain in the build environment
-- [ ] 2. Android export preset + icons in the project
-- [ ] 3. Signed AAB builds headlessly (script in `scripts/`)
-- [ ] 4. Tested on a real phone (touch, pinch, save/load, frame rate)
-- [ ] 5. Play Console: app created, store listing, policies
+Everything that can be done from the repo is done. What's left needs
+your accounts, a phone, or a decision only you can make: see **Your
+to-do list** below.
+
+- [x] 1. Toolchain: pinned Godot 4.7.2 for Android; the build runs in
+  GitHub Actions, which has the Android SDK
+- [x] 2. Android export preset, launcher icons, Back button, safe area
+- [x] 3. Build script + workflow for a debug APK and a signed AAB
+- [x] Play listing art, listing text, privacy policy page
+- [ ] 4. First CI build run and tested on a real phone
+- [ ] 5. Play Console: account, app, listing, policies
 - [ ] 6. Internal testing, then closed test (12+ testers, 14 days)
 - [ ] 7. Production release
 
-### 1. Toolchain
+### Why Android builds with Godot 4.7.2, not 4.3
 
-- Godot 4.3 **Android** export templates. Only the two `web_nothreads_*`
-  templates are installed so far (`~/.local/share/godot/export_templates/4.3.stable/`);
-  the full `Godot_v4.3-stable_export_templates.tpz` contains the
-  Android ones (`android_release.apk`, `android_debug.apk`, `android_source.zip`).
-- JDK 17 (what Godot 4.3's Gradle template is built against). The cloud
-  container has only Java 21 at `/usr/lib/jvm/java-21-openjdk-amd64`;
-  install 17 rather than find out whether the template's Gradle copes.
-- Android SDK via `cmdline-tools`: `platform-tools`, `build-tools`, and
-  the `platforms;android-<target>` for the target API below. Point Godot
-  at it with the editor settings `export/android/android_sdk_path` and
-  `export/android/java_sdk_path` (for a headless run, write them into
-  `~/.config/godot/editor_settings-4.3.tres` or pass them as env).
-- Check the proxy lets Gradle reach `dl.google.com` and Maven Central;
-  if not, the build has to run on a local machine.
+Google Play has required **16 KB memory page support** for new apps and
+updates targeting Android 15+ since November 2025. Godot 4.3's Android
+libraries are 4 KB aligned (`readelf -l libgodot_android.so`: LOAD
+alignment `0x1000`), so Play would reject them. 4.7.2 (the latest stable)
+is 16 KB aligned (`0x4000`) and its Gradle template already targets API
+36, which is what Play wants now. The CI build checks the alignment
+again on every run.
 
-### 2. Project changes
+The Web build stays on 4.3, since nothing is wrong with it.
+`scripts/game1-android.sh` exports from a **throwaway copy** of the
+project, so the 4.7 editor's import and upgrade never touch the source
+tree. The game runs the same on both: headless runs of the demo layout
+give identical train speeds, digit for digit, on 4.3 and 4.7.2, with no
+script errors. Moving the Web build to 4.7 too would remove the split,
+but it would mean re-measuring `TriBatch`'s anti-aliasing geometry
+against the newer renderer. It hasn't been done.
 
-- Add `[preset.1]` "Android" to `export_presets.cfg` (keep "Web" as
-  preset 0 so the Web command is unchanged):
-  - `package/unique_name="com.<you>.railyard"`, `package/name="Rail Yard"`
-  - `version/code` (an integer that goes up with **every** upload) and
-    `version/name`
-  - `gradle_build/use_gradle_build=true`: the Play Store only accepts
-    AAB, and a custom target SDK needs a Gradle build. So also
-    `gradle_build/export_format=1` (AAB) and install the build template
-    (`android/build/` from `android_source.zip`; decide whether to commit
-    it or unpack it in the build script, leaning towards the script)
-  - `gradle_build/target_sdk`: whatever Google requires now. That was
-    API 35 (Android 15) for new apps from Aug 2025 and it rises every
-    August. Godot 4.3 defaults to 34, which is too low. `min_sdk` stays
-    at Godot's default.
-  - `architectures/arm64-v8a=true` (and `armeabi-v7a` for old phones);
-    Play needs 64-bit.
-  - `screen/orientation`: portrait (already `window/handheld/orientation`
-    in `project.godot`)
-  - No permissions needed: no internet, no storage (saves go to
-    `user://`, which is app-private on Android).
-- Icons, drawn procedurally to match the rest of the game (e.g. a
-  script that renders `IconArt`'s steam engine on a track loop to PNG
-  with `godot4 --headless`), rather than hand-made art:
-  - `launcher_icons/main_192x192`
-  - `launcher_icons/adaptive_foreground_432x432` and
-    `adaptive_background_432x432` (keep the picture inside the central
-    ~66% safe zone of the foreground)
-  - Play listing: a 512×512 icon and a 1024×500 feature graphic
-- Code: probably nothing. The Web-only bits (`JavaScriptBridge` in
-  `ui_root.gd`) are behind `OS.has_feature("web")`, and touch/pinch uses
-  the same `InputEventScreenTouch` path. Worth checking on the phone:
-  the Android back button (`NOTIFICATION_WM_GO_BACK_REQUEST`: close an
-  open sheet, or leave Play, before quitting the app), and the insets
-  for the notch/status bar (`DisplayServer.get_display_safe_area()`)
-  so the top strip isn't under the camera cutout.
+### What's in the repo
 
-### 3. Signing and build
+- **`export_presets.cfg` → `[preset.1]` "Android"**: Gradle build, AAB,
+  target SDK 36 (min SDK: Godot's default, 24), arm64-v8a + armeabi-v7a,
+  `package/unique_name="com.bvandersen.railyard"`, `version/code=1`
+  (CI overrides it), `version/name="1.0"`, immersive full screen, no
+  permissions, no backup of user data (so "nothing leaves the device"
+  is literally true). Keystore fields are empty: the keys come from the
+  environment. "Web" is still preset 0 and now leaves `tools/` and
+  `art/` out of the Web `.pck`.
+- **`project.godot`**: `config/icon`, `config/quit_on_go_back=false`,
+  and `import_etc2_astc=true` (the Android export refuses to run
+  without it; Web doesn't use it).
+- **Code** (applies to Android only, harmless elsewhere):
+  - Back (`Main._notification`, `NOTIFICATION_WM_GO_BACK_REQUEST`):
+    closes an open train sheet or menu first, then leaves Play, and only
+    then quits.
+  - Pending auto-saves are written when the app goes to the background
+    (`NOTIFICATION_APPLICATION_PAUSED`), since Android may kill it there
+    without warning.
+  - Safe area (`UIRoot._apply_safe_area`, only with the `mobile`
+    feature): the UI root is inset by
+    `DisplayServer.get_display_safe_area()`, so the top strip and sheets
+    stay clear of the status bar, the camera cutout and the gesture bar
+    (Android 15+ always draws edge to edge).
+- **Art, all rendered from the game's own painters** (no hand-made art)
+  by `scripts/game1-android-art.sh`, which runs
+  `game1/rail-yard/tools/store_art.gd` under Xvfb:
+  - `game1/rail-yard/art/android/`: launcher icon 192 px plus the
+    adaptive foreground, background and monochrome (themed icon) layers
+    at 432 px. The picture is `IconArt`'s steam engine (the one on the
+    +Train button) on a piece of track, over grass green, inside the
+    66% safe zone. Icons render at 4× with AA off and are then scaled
+    down: IconArt's AA fringe is sized for a 24 px button and blurs
+    everything when blown up.
+  - `game1/store/rail-yard/`: 512 px Play icon, 1024×500 feature graphic
+    (the demo layout running, camera turned 90° to fill the banner), and
+    three 1080×1920 phone screenshots (design, train sheet, play).
+  - `game1/store/rail-yard/listing.md`: title, short and full
+    description, and the answers for content rating, data safety, target
+    audience and ads.
+- **Privacy policy**: `static/game1/rail-yard/privacy.html` (nothing
+  collected, saves stay on the device, fine for children). The Pages
+  workflow publishes it with the game, at
+  `https://bvandersen.github.io/playground/game1/rail-yard/privacy.html`.
+- **`scripts/game1-android.sh aab|apk`**: downloads Godot 4.7.2 and its
+  templates into `~/.cache` if needed, points its editor settings at
+  `$JAVA_HOME` / `$ANDROID_HOME`, copies the project to
+  `build/game1-android/` (gitignored), applies `$VERSION_CODE`, installs
+  the Gradle build template into the copy
+  (`--install-android-build-template`) and exports. `aab` is the signed
+  release for Play and needs `GODOT_ANDROID_KEYSTORE_RELEASE_PATH`,
+  `_USER` and `_PASSWORD`. `apk` is a debug build to sideload (Godot
+  makes its own debug key).
+- **`.github/workflows/game1-android.yml`** (run by hand from the Actions
+  tab, choosing `apk` or `aab`): runs the script on GitHub's Ubuntu
+  runner (JDK 17 plus the preinstalled Android SDK), checks the 16 KB
+  alignment of the arm64 libraries in the output, and uploads the file
+  as a workflow artifact. The version code is the workflow's run number,
+  so it always goes up (`VERSION_CODE_BASE` in the workflow can jump it
+  if ever needed). For `aab` it reads the upload key from three repo
+  secrets (see the to-do list).
 
-- Upload key: `keytool -genkeypair -v -keystore railyard-upload.jks
-  -alias upload -keyalg RSA -keysize 2048 -validity 10000`. **Never
-  commit it.** Keep it and its password somewhere backed up, and pass
-  them to Godot via env (`GODOT_ANDROID_KEYSTORE_RELEASE_PATH`,
-  `..._USER`, `..._PASSWORD`). Enrol in Play App Signing so Google holds
-  the real app key and a lost upload key can be reset.
-- Build: `godot4 --headless --path game1/rail-yard --export-release
-  "Android" <out>/rail-yard.aab`. Put this in a `scripts/` build script
-  (unpack the build template, bump `version/code`, export), and don't
-  commit the `.aab` itself (unlike the Web build, which is committed).
-- Check `project.godot`'s `config/name` and add `config/icon`.
+Verified here: the Android export gets through the preset, icons and
+ETC2 checks and stops only at the missing Android SDK. (This container
+can't reach `dl.google.com`, which is why the build runs in CI.) The Web
+build was re-exported with 4.3 and still boots in headless Chromium with
+no errors. The Back and pause handling were exercised headless on both
+4.3 and 4.7.2. **Not verified**: a completed Gradle build (the first CI
+run is the test) and anything on a real device, including the safe-area
+insets.
 
-### 4. Real-phone test
+### Your to-do list
 
-The first real touch test of this game (see "Not verified" above):
-drawing, the Smooth brush, pinch-zoom, dragging trains, save/load and
-auto-save surviving the app being killed, and frame rate with several
-long trains on a low-end phone. Sideload with `adb install` using an
-APK export of the same preset, or go through Play's internal testing
-track.
+In order. Steps 1–3 need no Google account.
 
-### 5. Play Console
+1. **Confirm the package name** before anything is uploaded:
+   `com.bvandersen.railyard` in `game1/rail-yard/export_presets.cfg`. It
+   can **never** change after the first upload to Play. Change it now if
+   you'd rather have something else.
+2. **Run the debug build**: GitHub → Actions → "game1 Android build" →
+   Run workflow → `apk`. If it fails, send me the log. Download the
+   artifact, unzip it, and `adb install rail-yard.apk` (or copy it to the
+   phone and open it, allowing installs from unknown sources).
+3. **Test on a real phone** (the game's first real touch test): drawing
+   track, the Smooth brush, pinch-zoom, dragging trains, the train
+   sheet, Play, flipping switches, Back (closes the sheet, then leaves
+   Play, then quits), save/load, and auto-save surviving the app being
+   swiped away. Check the top strip isn't under the camera cutout or
+   status bar, and that frame rate holds with several long trains on
+   the slowest phone you have.
+4. **Make the upload key** on your own computer, not in a cloud session:
+   ```sh
+   keytool -genkeypair -v -keystore railyard-upload.jks -alias upload \
+     -keyalg RSA -keysize 2048 -validity 10000
+   ```
+   Back the `.jks` file and its password up somewhere safe (a password
+   manager). **Never commit it.**
+5. **Add three repo secrets** (Settings → Secrets and variables →
+   Actions): `ANDROID_UPLOAD_KEYSTORE_BASE64` = output of
+   `base64 -w0 railyard-upload.jks`, `ANDROID_UPLOAD_KEY_ALIAS` =
+   `upload`, `ANDROID_UPLOAD_KEY_PASSWORD` = the password.
+6. **Check the privacy policy URL loads**:
+   https://bvandersen.github.io/playground/game1/rail-yard/privacy.html
+   (the Pages workflow runs on this push). If Pages isn't live, run that
+   workflow by hand, or tell me to host the page somewhere else.
+7. **Google Play developer account**: https://play.google.com/console,
+   $25 once, plus identity verification (can take a few days). A
+   personal account is fine.
+8. **Create the app** in Play Console: name "Rail Yard", type Game, free.
+   Accept the declarations.
+9. **Fill in the store listing and App content** from
+   `game1/store/rail-yard/listing.md` and upload its images: the privacy
+   policy URL, ads (none), content rating questionnaire, target audience
+   (include children, so the Families policy applies), data safety (no
+   data collected), app access. Choose "Everyone" for the rating.
+10. **Build the release**: Actions → "game1 Android build" → `aab`.
+    Download `rail-yard.aab` from the run's artifacts.
+11. **Internal testing**: Testing → Internal testing → create a release →
+    upload the `.aab`. On the first upload, accept **Play App Signing**
+    (Google keeps the real app key, and a lost upload key can be reset).
+    Add yourself as a tester and install from the opt-in link.
+12. **Closed test**: new personal accounts must run one with **at least
+    12 testers opted in for 14 days in a row** before production access
+    is granted. Recruit them (family and friends with Android phones) and
+    start it as soon as the build works.
+13. **Apply for production access** once the 14 days are done
+    (Dashboard), answer the questions about the test, then promote the
+    release to Production and submit. Review usually takes a few days.
+14. **Every later update**: re-run the workflow with `aab` (the version
+    code goes up by itself) and upload it to a track. Each August, check
+    Play's target-API deadline. If Godot 4.7's API 36 falls behind, move
+    to a newer Godot and bump `GODOT_VERSION` in the script and the cache
+    key in the workflow.
 
-- Developer account: $25 once plus ID verification.
-- Create the app; store listing: title, short description (80 chars),
-  full description, icon, feature graphic, 2+ phone screenshots
-  (the headless Chromium screenshot setup used for the Web build works
-  for these too).
-- Privacy policy URL (required): the app collects nothing, so a short
-  page saying so. It could live on the same GitHub Pages site.
-- Content rating questionnaire (IARC); Data safety form: no data
-  collected or shared.
-- Target audience: the UI is built for children who can't read yet, so
-  the **Families policy** applies: kid-appropriate content, no
-  non-certified ads/analytics SDKs (there are none), and the privacy
-  policy and listing have to reflect a child audience.
-
-### 6–7. Testing tracks and release
-
-- Upload to **Internal testing** first (fast, up to 100 testers).
-- New personal developer accounts must run a **closed test with at
-  least 12 opted-in testers for 14 days in a row** before they can apply
-  for production access.
-- Then promote to **Production** and submit; review usually takes a few
-  days. Every later update needs a higher `version/code`.
+Optional: point me at anything from step 3 that feels wrong on the
+phone. If you want a different icon, `tools/store_art.gd` is where it's
+drawn.
 
 ## Ideas for later
 

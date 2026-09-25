@@ -13,6 +13,10 @@ config_version=5
 config/name="Rail Yard"
 run/main_scene="res://Main.tscn"
 config/features=PackedStringArray("4.3", "GL Compatibility")
+config/icon="res://art/android/icon_192.png"
+; Android Back is handled in Main._notification (close a sheet, leave Play,
+; then quit) rather than quitting straight away.
+config/quit_on_go_back=false
 
 [autoload]
 
@@ -35,3 +39,5 @@ common/physics_ticks_per_second=60
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 environment/defaults/default_clear_color=Color(0.33, 0.45, 0.24, 1)
+; Required by the Android export (it refuses to run without it).
+textures/vram_compression/import_etc2_astc=true

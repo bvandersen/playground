@@ -65,6 +65,25 @@ func setup(main_ref: Node) -> void:
 	on_mode_changed(main.MODE_DESIGN)
 	on_tool_changed(main.tool)
 	_install_web_enter_to_blur()
+	get_viewport().size_changed.connect(_apply_safe_area)
+	_apply_safe_area()
+
+## On a phone the app runs edge to edge, so keep every panel clear of the
+## status bar, camera cutout and gesture bar: inset this full-screen root
+## (which every panel is docked to) by the display's safe area. On the Web
+## the browser already does this, and on desktop there's nothing to avoid.
+func _apply_safe_area() -> void:
+	if not OS.has_feature("mobile"):
+		return
+	var win := Vector2(DisplayServer.window_get_size())
+	if win.x <= 0.0 or win.y <= 0.0:
+		return
+	var safe := Rect2(DisplayServer.get_display_safe_area())
+	var k := get_viewport_rect().size / win # window px -> UI units
+	offset_left = safe.position.x * k.x
+	offset_top = safe.position.y * k.y
+	offset_right = -maxf(win.x - safe.end.x, 0.0) * k.x
+	offset_bottom = -maxf(win.y - safe.end.y, 0.0) * k.y
 
 # --- Theme -----------------------------------------------------------------
 
@@ -202,6 +221,17 @@ func is_over_panel(screen_pos: Vector2) -> bool:
 	for panel in [top_strip, train_sheet, menu_sheet, undo_button]:
 		if panel.visible and panel.get_global_rect().has_point(screen_pos):
 			return true
+	return false
+
+## Closes the train sheet or menu if one is open (Android Back); false if
+## neither was.
+func close_open_sheet() -> bool:
+	if train_sheet.visible:
+		main.select_train(null)
+		return true
+	if menu_sheet.visible:
+		_show_sheet(null)
+		return true
 	return false
 
 func _show_sheet(sheet: Control) -> void:

@@ -98,6 +98,23 @@ func _ready() -> void:
 		load_demo()
 	fit_view.call_deferred()
 
+## Android: the system Back gesture/button steps back out of whatever is
+## open (a sheet, then Play) before it leaves the app (project.godot sets
+## quit_on_go_back=false so it reaches here). Being sent to the background
+## writes any pending auto-save, since Android may kill the app from there.
+func _notification(what: int) -> void:
+	match what:
+		NOTIFICATION_WM_GO_BACK_REQUEST:
+			if ui.close_open_sheet():
+				return
+			if mode == MODE_PLAY:
+				set_mode(MODE_DESIGN)
+				return
+			_flush_autosave()
+			get_tree().quit()
+		NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_WM_CLOSE_REQUEST:
+			_flush_autosave()
+
 func _process(delta: float) -> void:
 	if follow_train != null:
 		if not trains.has(follow_train) or follow_train.world.is_empty():
