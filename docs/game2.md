@@ -567,6 +567,10 @@ assets to a store without Cloudflare Workers' per-asset limit (R2, fetched
 through a Worker) instead of Workers' own static-asset handling — both
 real options, neither attempted yet.
 
+**Update 2026-09-25**: the hosting decision (stay on Pages) and the plan
+from here (one shared engine copy, a Netlify standby, R2 for the real
+domain) are in `docs/hosting.md`.
+
 ## Demo 2 — "Ragdoll Meme Maker" (`game2/ragdoll-meme/`)
 
 Brief (verbatim):
