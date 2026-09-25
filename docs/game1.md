@@ -19,7 +19,8 @@ the GitHub Pages deploy) applies here unchanged and isn't repeated.
 ## What it is
 
 - **Design mode**: a top strip with `Play`, and the tools `Select`,
-  `Draw`, `Smooth`, `Erase`, `+Train`, plus `Menu`.
+  `Draw`, `Road`, `Smooth`, `Erase`, `+Train`, `+Build`, plus `Menu`
+  (see "Roads, traffic, buildings and nature" below).
   Every button is a picture rather than a word, so a child who can't
   read yet can use it (`IconArt` in `scripts/ui/icon_art.gd` draws them
   procedurally, `IconButton` shows one; the words stay as tooltips):
@@ -173,9 +174,81 @@ it's layered on purpose:
    the wind plus some of the loco's velocity, swell and fade.
 7. Headlight cones ahead of the lead loco in Play.
 
+## Roads, traffic, buildings and nature
+
+Brief (verbatim): "Train game add roads, many diff cars, trucks, busses,
+houses, industry, shopping, nature".
+
+- **Road tool** (a road with a yellow dashed line): drag to lay a road.
+  `RoadNetwork` (`scripts/road/road_network.gd`) *is* a `TrackNetwork`
+  (same segments, nodes, snapping, smoothing brush, save format), with
+  two differences: a road started or ended on the side of another road
+  joins at the angle it was drawn (a T-junction, not a tangent switch),
+  and two roads that cross are split and joined into a crossroads
+  (`add_road` → `_fuse_one_crossing`). Carrying on from a dead end still
+  continues it smoothly. Smooth and Erase work on roads too.
+- **Level crossings** (`LevelCrossing`): found afresh wherever a road
+  crosses the track (`TrackNetwork.crossings`, also used for the
+  crossroads). `RoadView` bakes the road (kerb, asphalt, junction patches,
+  turning circles at dead ends, dashed centre and solid edge lines) and
+  lays each crossing over it: rubber panels, the rails running through,
+  stop lines and a painted X. In Play the barriers swing down and the
+  lights flash while a train is getting closer and under 3.2 s away (at
+  least 150 px), or is
+  on the crossing; crossings within 110 px of each other shut together so
+  nobody waits between two tracks. A bell rings while they're down.
+  A vehicle already on a crossing hurries off it. Trains never wait for
+  cars.
+- **Traffic** (`Vehicle`, `VehicleCatalog`, `VehicleArt`, `VehiclesView`):
+  25 types in three kinds. Cars: mini, hatchback, saloon, estate, SUV,
+  sports car, taxi, police car, pickup, van, ice cream van. Lorries: box,
+  tanker, tipper, cement mixer, log lorry, bin lorry, fire engine and an
+  articulated lorry. Buses: city bus, school bus, double-decker, coach,
+  minibus and a bendy bus. A vehicle drives along a *lane* polyline
+  8.5 px right of the road centre (right-hand traffic), built a few pieces
+  ahead; at each junction it picks a random way on, and at a dead end it
+  turns round. Lanes of consecutive pieces are joined with a cubic Bezier,
+  so corners and U-turns are one smooth path. Both axles sit on that path
+  and the body on the chord between them (the trains' bogie trick); the
+  articulated lorry's and the bendy bus's trailers follow a hitch. Each
+  vehicle cruises at its own speed, slows for bends, keeps its distance
+  from anything in its lane ahead, stops for closed crossings, and shows
+  brake lights. Two vehicles waiting on each other at a junction (crossing
+  paths, or merging into the same lane) sort it out: after a wait, the
+  one that has waited longest beeps and goes first. All traffic is one
+  mesh per frame, like the crowds.
+- **Build tool** (a house with a +) opens a palette painted by the same
+  painters that draw the layout: a station (moved here from the top
+  strip), house, flats, shop, supermarket, factory, warehouse, farm, tree,
+  woods, pond, flowers, and a car, a lorry and a bus (each tap puts down a
+  different one of that kind, on the side of the road tapped). Buildings
+  turn to face the nearest road and sit back from its kerb; they are
+  refused on track, roads, stations or other buildings; scenery may
+  overlap other scenery. Laying track or road over a building clears it.
+  `Building` + `BuildingCatalog` (`scripts/build/`) follow the standing
+  rule: a new kind is one catalog entry plus one `BuildingArt` painter.
+  Houses vary (gable, hip or side-gable roofs, chimneys, solar panels,
+  driveways with the family car, garden trees or flowers); the
+  supermarket has a car park with parked cars; the factory's chimney
+  smokes in Play; the farm has crops, a barn, hay bales and a tractor; the
+  pond has reeds, lily pads and ducks. Shadows fall the same way as the
+  trains' however a building is turned. Everything is baked into one mesh.
+- The demo layout now has a small town round the railway: four roads
+  (three level crossings, a crossroads, T-junctions, a cul-de-sac), about
+  50 buildings and bits of nature, and 18 vehicles of different types.
+- Saved state gains `roads`, `vehicles` and `buildings`; older saves load
+  with none.
+
+Verified headless: the demo builds 9 road pieces with 4 junctions and 3
+crossings; 90 s of Play keeps traffic moving (no permanent jams after the
+merge-deadlock fix) with trains at their usual 105 / 80 px/s; road
+crossroads/T-junctions, building placement and refusal, vehicle placement,
+erase, undo and a JSON save/load round trip. Screenshots were checked
+under xvfb (`tools/_shot_town.gd`). Not checked on a phone.
+
 ## Sound
 
-Ten short sound effects, made with ElevenLabs' text-to-sound model
+Twelve short sound effects, made with ElevenLabs' text-to-sound model
 (`eleven_text_to_sound_v2`, through the ElevenLabs MCP connector, flow
 "Rail Yard sound effects"). No sound is synthesised in the game. Each clip
 was decoded, cut to the one event that was wanted, trimmed of silence, given
@@ -195,6 +268,13 @@ a 3 ms fade in and a 40 ms fade out, normalised to -1 dBFS and saved as
 | `track` | Toy wooden train track piece clicked into place, satisfying soft knock with a little gravel crunch (second knock only) | a drawn stroke becomes track |
 | `erase` | Quick soft cartoon swoosh with a gentle pop, playful removal sound | track or a train is erased |
 | `tap` | Single crisp wooden block click, short bright UI tap, close-mic | any icon button is pressed |
+| `bell` | Railway level crossing warning bell, a single clear electronic ding, isolated, outdoors | every 0.55 s while a level crossing is closed |
+| `beep` | Small cartoon car horn, two quick friendly beeps, beep beep, isolated, close | a vehicle is put down, or goes first at a junction standoff |
+
+`bell` and `beep` were added with the roads (flows "level crossing bell"
+and "car horn", two takes each; the first bell take and the second horn
+take were kept), processed the same way, decoded with the `miniaudio`
+Python package since the container has no ffmpeg.
 
 Two of the first takes were replaced: the first `tap` came out silent
 (peak 0.003), and the first `chuff` was a 2 s swelling hiss, not a single

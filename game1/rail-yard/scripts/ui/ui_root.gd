@@ -18,7 +18,9 @@ const HINTS := {
 	"smooth": "Rub over wobbly track to smooth it out, or tap a piece to smooth all of it.",
 	"train": "Tap a track to put a train on it.",
 	"station": "Tap beside a track to build a station there. Trains with coaches stop to let people off and on.",
-	"play": "Tap a train to stop or start it. Tap a switch to flip it. Trains with coaches stop at stations.",
+	"road": "Drag to lay a road. Start on a road to branch off it; roads that cross make a crossroads, and a road over the track gets a level crossing.",
+	"build": "Pick something, then tap to put it down. Buildings turn to face the nearest road; cars, lorries and buses go on a road.",
+	"play": "Tap a train to stop or start it. Tap a switch to flip it. Cars stop at the crossing gates when a train comes.",
 }
 
 var main: Node
@@ -37,6 +39,9 @@ var running_button: IconButton
 var direction_button: IconButton
 var consist_grid: GridContainer
 var add_car_buttons := {}
+
+var build_sheet: PanelContainer
+var build_buttons := {}
 
 var menu_sheet: PanelContainer
 var slot_name_edit: LineEdit
@@ -62,6 +67,7 @@ func setup(main_ref: Node) -> void:
 	_build_top_strip()
 	_build_hint()
 	_build_train_sheet()
+	_build_build_sheet()
 	_build_menu_sheet()
 	on_selection_changed(null)
 	on_mode_changed(main.MODE_DESIGN)
@@ -220,7 +226,7 @@ func _small_label(text: String) -> Label:
 ## See game2's UIRoot.is_over_panel: on the Web export touches reach
 ## Main._unhandled_input even when they land on a panel.
 func is_over_panel(screen_pos: Vector2) -> bool:
-	for panel in [top_strip, train_sheet, menu_sheet, undo_button]:
+	for panel in [top_strip, train_sheet, menu_sheet, build_sheet, undo_button]:
 		if panel.visible and panel.get_global_rect().has_point(screen_pos):
 			return true
 	return false
@@ -241,7 +247,20 @@ func _show_sheet(sheet: Control) -> void:
 		s.visible = s == sheet
 	if sheet != null:
 		_fit_bottom(sheet)
+	_update_build_sheet()
 	_update_hint()
+
+## The Build palette stays up for as long as the Build tool is in use,
+## unless another sheet is open over it.
+func _update_build_sheet() -> void:
+	if build_sheet == null:
+		return
+	var want: bool = main.mode == main.MODE_DESIGN and main.tool == main.TOOL_BUILD \
+		and not train_sheet.visible and not menu_sheet.visible
+	if want != build_sheet.visible:
+		build_sheet.visible = want
+		if want:
+			_fit_bottom.call_deferred(build_sheet)
 
 # --- Top strip -------------------------------------------------------------
 
@@ -258,12 +277,12 @@ func _build_top_strip() -> void:
 	top_strip.add_child(row)
 
 	mode_button = _icon_button(row, "play", "Play", func(): main.toggle_mode())
-	mode_button.custom_minimum_size = Vector2(62, 40)
+	mode_button.custom_minimum_size = Vector2(56, 40)
 
 	var group := ButtonGroup.new()
-	for spec in [["select", "hand", "Select"], ["draw", "pencil", "Draw"], ["smooth", "brush", "Smooth track"], ["erase", "eraser", "Erase"], ["train", "train", "Add a train"], ["station", "station", "Build a station"]]:
-		var b := IconButton.new(spec[1], spec[2])
-		if spec[0] == "train" or spec[0] == "station":
+	for spec in [["select", "hand", "Select"], ["draw", "pencil", "Draw track"], ["road", "road", "Draw a road"], ["smooth", "brush", "Smooth track and roads"], ["erase", "eraser", "Erase"], ["train", "train", "Add a train"], ["build", "house", "Build houses, shops, factories, nature and cars"]]:
+		var b := IconButton.new(spec[1], spec[2], Vector2(46, 40))
+		if spec[0] == "train" or spec[0] == "build":
 			b.badge = "plus"
 		b.toggle_mode = true
 		b.button_group = group
@@ -272,6 +291,7 @@ func _build_top_strip() -> void:
 		tool_buttons[spec[0]] = b
 
 	menu_button = _icon_button(row, "menu", "Menu", _toggle_menu)
+	menu_button.custom_minimum_size = Vector2(44, 40)
 
 func _build_hint() -> void:
 	hint_panel = PanelContainer.new()
@@ -446,6 +466,65 @@ func _refresh_train_fields() -> void:
 			add_car_buttons[type].car["color"] = t.livery
 			add_car_buttons[type].queue_redraw()
 
+# --- Build palette ---------------------------------------------------------
+
+## Everything the Build tool can put down, as pictures painted by the
+## same painters that draw them on the layout: a station, then every
+## BuildingCatalog kind, then a car, a lorry and a bus (each tap puts down
+## a different one of that kind).
+func _build_build_sheet() -> void:
+	build_sheet = PanelContainer.new()
+	var col := _new_sheet_column(build_sheet)
+	var grid := GridContainer.new()
+	grid.columns = 8
+	grid.add_theme_constant_override("h_separation", 4)
+	grid.add_theme_constant_override("v_separation", 4)
+	col.add_child(grid)
+	var group := ButtonGroup.new()
+	var items: Array = [[main.BUILD_STATION, "Station"]]
+	for kind in BuildingCatalog.kinds():
+		items.append([kind, BuildingCatalog.entry(kind)["name"]])
+	for kind in main.VEHICLE_KINDS:
+		items.append([kind, {"car": "Cars", "truck": "Lorries", "bus": "Buses"}[kind]])
+	for it in items:
+		var id: String = it[0]
+		var b := IconButton.new("station" if id == main.BUILD_STATION else "", it[1], Vector2(0, 44))
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.toggle_mode = true
+		b.button_group = group
+		if BuildingCatalog.has_kind(id):
+			b.thing = _paint_building.bind(id)
+		elif main.VEHICLE_KINDS.has(id):
+			b.thing = _paint_vehicle.bind(VehicleCatalog.KIND_ICON[id])
+		b.pressed.connect(_on_build_pick.bind(id))
+		grid.add_child(b)
+		build_buttons[id] = b
+	if build_buttons.has(main.build_kind):
+		build_buttons[main.build_kind].button_pressed = true
+
+func _paint_building(b: TriBatch, box: Vector2, kind: String) -> void:
+	var e := BuildingCatalog.entry(kind)
+	var sz: Vector2 = e["size"]
+	var k := minf((box.x - 6.0) / sz.x, (box.y - 6.0) / sz.y)
+	var colors: Array = e["colors"]
+	BuildingCatalog.paint(b, kind, Transform2D(0.0, Vector2(k, k), 0.0, box * 0.5), colors[0], 11, Vector2(3.5, 4.5) * k)
+
+func _paint_vehicle(b: TriBatch, box: Vector2, type: String) -> void:
+	var e := VehicleCatalog.entry(type)
+	var k := minf((box.x - 8.0) / float(e["length"]), (box.y - 10.0) / float(e["width"]))
+	b.draw_set_transform(box * 0.5, 0.0, Vector2(k, k))
+	VehicleCatalog.paint(b, {"type": type, "color": e["colors"][0], "seed": 3})
+	b.draw_set_transform(Vector2.ZERO)
+
+func _on_build_pick(id: String) -> void:
+	main.build_kind = id
+	if main.VEHICLE_KINDS.has(id):
+		show_message("Tap on a road -- every tap puts down a different one.", 2.5)
+	elif id == main.BUILD_STATION:
+		show_message(HINTS["station"], 2.5)
+	else:
+		show_message("Tap to put down a %s." % build_buttons[id].tooltip_text.to_lower(), 2.0)
+
 # --- Menu sheet (save / load / layout) -------------------------------------
 
 func _build_menu_sheet() -> void:
@@ -601,6 +680,7 @@ func on_mode_changed(mode: String) -> void:
 	undo_button.visible = is_design and _undo_count > 0
 	if not is_design:
 		_show_sheet(null)
+	_update_build_sheet()
 	_update_hint()
 
 func on_tool_changed(tool: String) -> void:
@@ -611,6 +691,7 @@ func on_tool_changed(tool: String) -> void:
 		tool_buttons[tool].button_pressed = true
 	if tool != main.TOOL_SELECT and train_sheet.visible:
 		main.select_train(null)
+	_update_build_sheet()
 	_update_hint()
 
 func on_undo_changed(count: int) -> void:

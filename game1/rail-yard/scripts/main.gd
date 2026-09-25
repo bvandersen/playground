@@ -1,9 +1,10 @@
 extends Node2D
 
-## Wires the track network, trains, views and UI together, and owns what
-## none of them should: the Design/Play mode, the active design tool, the
-## camera, input routing, undo, and save/load. What track *is* lives in
-## TrackNetwork; what a train *does* lives in Train -- this is plumbing.
+## Wires the track and road networks, trains, traffic, buildings, views
+## and UI together, and owns what none of them should: the Design/Play
+## mode, the active design tool, the camera, input routing, undo, and
+## save/load. What track *is* lives in TrackNetwork; what a train *does*
+## lives in Train, a car in Vehicle -- this is plumbing.
 
 const MODE_DESIGN := "design"
 const MODE_PLAY := "play"
@@ -14,6 +15,13 @@ const TOOL_ERASE := "erase"
 const TOOL_SMOOTH := "smooth"
 const TOOL_TRAIN := "train"
 const TOOL_STATION := "station"
+const TOOL_ROAD := "road"
+const TOOL_BUILD := "build"
+
+## What the Build tool's palette can put down besides BuildingCatalog's
+## kinds: a station, or a random car / lorry / bus (VehicleCatalog kinds).
+const BUILD_STATION := "station"
+const VEHICLE_KINDS := ["car", "truck", "bus"]
 
 const STATE_VERSION := 1
 const AUTOSAVE_DELAY := 0.8
@@ -30,8 +38,13 @@ const BRUSH_TAP_TIME := 0.25 # s held still before a press brushes instead of ta
 var mode: String = MODE_DESIGN
 var tool: String = TOOL_SELECT
 var net := TrackNetwork.new()
+var roads := RoadNetwork.new()
 var trains: Array = []
 var stations: Array = []
+var vehicles: Array = []
+var buildings: Array = []
+var crossings: Array = [] # LevelCrossing, found afresh when track or roads change
+var build_kind := "house"
 var selected_train: Train = null
 ## Camera follows this train while it's set; any manual pan/zoom lets go.
 var follow_train: Train = null
@@ -39,6 +52,9 @@ var follow_train: Train = null
 var camera: Camera2D
 var ground: Ground
 var track_view: TrackView
+var road_view: RoadView
+var buildings_view: BuildingsView
+var vehicles_view: VehiclesView
 var stations_view: StationsView
 var people_view: PeopleView
 var trains_view: TrainsView
@@ -66,6 +82,7 @@ var _mouse_left := false
 var _mouse_pan := false
 var _pinch := {}
 var _stroke := PackedVector2Array()
+var _stroke_net: TrackNetwork = null # track or roads, whichever is being drawn
 var _drag_car := -1
 var _brush_pos := Vector2.ZERO
 var _smoothed: Array = [] # pieces the brush has moved this stroke
@@ -80,12 +97,21 @@ func _ready() -> void:
 	track_view = TrackView.new()
 	track_view.net = net
 	add_child(track_view)
+	road_view = RoadView.new()
+	road_view.main = self
+	add_child(road_view)
+	buildings_view = BuildingsView.new()
+	buildings_view.main = self
+	add_child(buildings_view)
 	stations_view = StationsView.new()
 	stations_view.main = self
 	add_child(stations_view)
 	people_view = PeopleView.new()
 	people_view.main = self
 	add_child(people_view)
+	vehicles_view = VehiclesView.new()
+	vehicles_view.main = self
+	add_child(vehicles_view)
 	trains_view = TrainsView.new()
 	trains_view.main = self
 	add_child(trains_view)
@@ -139,14 +165,37 @@ func _process(delta: float) -> void:
 		st.update(delta, mode == MODE_PLAY)
 	if not stations.is_empty():
 		people_view.queue_redraw()
+	if mode == MODE_PLAY:
+		for b in buildings:
+			if BuildingCatalog.entry(b.kind).get("smoke", false):
+				b.smoke_timer -= delta
+				if b.smoke_timer <= 0.0:
+					b.smoke_timer = randf_range(0.35, 0.6)
+					smoke.puff(b.chimney(), Vector2(randf_range(-3.0, 3.0), randf_range(-3.0, 3.0)), "steam", randf_range(0.8, 1.1))
 	if _autosave_countdown > 0.0:
 		_autosave_countdown = maxf(_autosave_countdown - delta, 0.001)
 		if _autosave_countdown <= 0.001:
 			_flush_autosave()
 
 func _physics_process(delta: float) -> void:
-	if mode != MODE_PLAY:
+	var playing := mode == MODE_PLAY
+	for c in crossings:
+		c.sense(trains, playing)
+	# Crossings close together shut together, so nobody waits on the
+	# track between them.
+	for a in crossings:
+		if a.want:
+			for b in crossings:
+				if b != a and b.pos.distance_to(a.pos) < LevelCrossing.LINK_DIST:
+					b.linked = true
+	for c in crossings:
+		c.animate(delta)
+	if not crossings.is_empty() or playing:
+		vehicles_view.queue_redraw()
+	if not playing:
 		return
+	for veh in vehicles:
+		veh.drive(delta, vehicles, crossings)
 	var targets := []
 	for t in trains:
 		targets.append(t.plan(delta, net, trains, stations))
@@ -201,11 +250,27 @@ func capture_state() -> Dictionary:
 		"tracks": net.to_dict(),
 		"trains": trains.map(func(t): return t.to_dict()),
 		"stations": stations.map(func(st): return st.to_dict()),
+		"roads": roads.to_dict(),
+		"vehicles": vehicles.map(func(v): return v.to_dict()),
+		"buildings": buildings.map(func(b): return b.to_dict()),
 	}
 
 func apply_state(state: Dictionary) -> void:
 	_cancel_gesture()
 	net.from_dict(state.get("tracks", {}))
+	roads.from_dict(state.get("roads", {}))
+	buildings.clear()
+	for bd in state.get("buildings", []):
+		if bd is Dictionary:
+			var b := Building.from_dict(bd)
+			if b != null:
+				buildings.append(b)
+	vehicles.clear()
+	for vd in state.get("vehicles", []):
+		if vd is Dictionary:
+			var veh := Vehicle.from_dict(vd)
+			if veh != null and veh.place(roads):
+				vehicles.append(veh)
 	stations.clear()
 	for sd in state.get("stations", []):
 		if sd is Dictionary:
@@ -224,14 +289,37 @@ func apply_state(state: Dictionary) -> void:
 	ui.on_selection_changed(null)
 
 func _redraw_world() -> void:
+	_find_crossings()
 	track_view.queue_redraw()
+	road_view.queue_redraw()
+	buildings_view.queue_redraw()
+	vehicles_view.queue_redraw()
 	stations_view.queue_redraw()
 	people_view.queue_redraw()
 	var clear_of := PackedVector2Array()
 	for st in stations:
 		clear_of.append_array(st.footprint())
+	for seg in roads.segments:
+		for i in range(0, seg.points.size(), 2):
+			clear_of.append(seg.points[i])
+	for b in buildings:
+		clear_of.append_array(b.footprint(20.0))
 	ground.rebuild(net, clear_of)
 	trains_view.queue_redraw()
+
+## Every place a road crosses the track.
+func _find_crossings() -> void:
+	crossings.clear()
+	for rs in roads.segments:
+		for ts in net.segments:
+			for hit in TrackNetwork.crossings(rs, ts):
+				var c := LevelCrossing.new()
+				c.pos = hit[0]
+				c.road_dir = rs.tangent_at(hit[1])
+				c.track_dir = ts.tangent_at(hit[2])
+				c.track_seg = ts
+				c.track_u = hit[2]
+				crossings.append(c)
 
 func push_undo() -> void:
 	_undo.append(capture_state())
@@ -306,12 +394,18 @@ func save_settings() -> void:
 
 ## A starter layout: an oval with a passing loop on top, a goods spur off
 ## the bottom and a second spur inside, one passenger and one freight
-## train. Built through the same add_stroke a finger uses, so it doubles
-## as a check that drawn joins come out smooth.
+## train -- and a little town round it: roads crossing the line, houses,
+## flats, shops, a supermarket, a factory and warehouses, a farm, woods
+## and a pond, and traffic. Built through the same add_stroke / add_road
+## a finger uses, so it doubles as a check that drawn joins come out
+## smooth.
 func load_demo() -> void:
 	if mode == MODE_PLAY:
 		set_mode(MODE_DESIGN)
 	net.clear()
+	roads.clear()
+	buildings.clear()
+	vehicles.clear()
 	# Drawn lying down, then stood upright to suit a phone held portrait.
 	var rot := Transform2D(PI * 0.5, Vector2.ZERO)
 	var oval := PackedVector2Array()
@@ -355,6 +449,8 @@ func load_demo() -> void:
 			st.populate()
 			stations.append(st)
 
+	_load_demo_town()
+
 	trains.clear()
 	selected_train = null
 	var specs := [
@@ -377,6 +473,69 @@ func load_demo() -> void:
 	ui.on_selection_changed(null)
 	mark_dirty()
 
+func _load_demo_town() -> void:
+	# Main road across the bottom of the oval (three level crossings), a
+	# high street down the east side, a cul-de-sac off it, and a back road
+	# round the west and north joining the two.
+	roads.add_road(_smooth_path([Vector2(-660, 250), Vector2(620, 250)]), 20.0)
+	roads.add_road(_smooth_path([Vector2(380, -580), Vector2(380, 580)]), 20.0)
+	roads.add_road(_smooth_path([Vector2(380, -250), Vector2(640, -250)]), 20.0)
+	roads.add_road(_smooth_path([Vector2(-420, 250), Vector2(-420, -330), Vector2(-400, -420), Vector2(-330, -475),
+		Vector2(-240, -490), Vector2(380, -490)]), 20.0)
+	var put := [
+		# Town: flats and shops round the crossroads, houses up the high street
+		# and round the cul-de-sac, the supermarket on the main road.
+		["shop", Vector2(300, 290)], ["shop", Vector2(460, 290)], ["shop", Vector2(460, 210)],
+		["flats", Vector2(450, 120)], ["flats", Vector2(450, 40)], ["house", Vector2(430, -40)],
+		["house", Vector2(430, -100)], ["house", Vector2(430, -160)], ["house", Vector2(430, -320)],
+		["house", Vector2(430, -380)], ["house", Vector2(480, -300)], ["house", Vector2(545, -300)],
+		["house", Vector2(610, -300)], ["house", Vector2(480, -200)], ["house", Vector2(545, -200)],
+		["house", Vector2(330, -120)], ["house", Vector2(330, -40)], ["house", Vector2(330, 40)],
+		["house", Vector2(330, 120)], ["house", Vector2(330, 360)], ["house", Vector2(330, 440)],
+		["market", Vector2(540, 350)], ["house", Vector2(430, 440)], ["house", Vector2(430, 510)],
+		# Industry by the goods spur.
+		["factory", Vector2(-455, 350)], ["warehouse", Vector2(-590, 340)], ["warehouse", Vector2(-300, 190)],
+		# Houses along the back road.
+		["house", Vector2(-470, -60)], ["house", Vector2(-470, 10)], ["house", Vector2(-470, 80)],
+		["house", Vector2(-470, 150)], ["house", Vector2(-370, -140)], ["house", Vector2(-370, -60)],
+		["shop", Vector2(-470, -140)],
+		# Country: a farm, woods, a pond, trees and flowers.
+		["farm", Vector2(-580, -270)], ["forest", Vector2(-20, -610)], ["forest", Vector2(560, -560)],
+		["pond", Vector2(-290, -300)], ["pond", Vector2(-40, 150)], ["flowers", Vector2(0, -428)],
+		["flowers", Vector2(-600, -60)], ["tree", Vector2(250, -300)], ["tree", Vector2(270, -380)],
+		["tree", Vector2(60, -150)], ["tree", Vector2(-560, 60)], ["tree", Vector2(240, 420)],
+		["tree", Vector2(-80, 330)], ["tree", Vector2(-260, -410)], ["forest", Vector2(-640, 520)],
+	]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2024
+	for it in put:
+		var b := Building.make(it[0], it[1])
+		b.seed = rng.randi() % 100000
+		var colors: Array = BuildingCatalog.entry(it[0])["colors"]
+		b.color = colors[rng.randi() % colors.size()]
+		if BuildingCatalog.entry(it[0]).get("faces_road", false):
+			b.face_road(roads, it[1], 140.0)
+		if not _building_blocked(b, null):
+			buildings.append(b)
+	var traffic := [
+		["sedan", Vector2(-560, 250), Vector2.RIGHT], ["city_bus", Vector2(520, 250), Vector2.LEFT],
+		["semi", Vector2(-300, 250), Vector2.LEFT], ["taxi", Vector2(60, 250), Vector2.RIGHT],
+		["box_truck", Vector2(380, -120), Vector2.DOWN], ["hatch", Vector2(380, 420), Vector2.UP],
+		["school_bus", Vector2(380, -400), Vector2.DOWN], ["police", Vector2(520, -250), Vector2.LEFT],
+		["icecream", Vector2(-420, -150), Vector2.UP], ["mixer", Vector2(-420, 100), Vector2.DOWN],
+		["double_decker", Vector2(0, -490), Vector2.RIGHT], ["sports", Vector2(200, -490), Vector2.LEFT],
+		["pickup", Vector2(100, 250), Vector2.LEFT], ["tanker_truck", Vector2(380, 520), Vector2.UP],
+		["suv", Vector2(380, 60), Vector2.UP], ["bendy_bus", Vector2(-120, -490), Vector2.LEFT],
+		["van", Vector2(600, 250), Vector2.LEFT], ["mini", Vector2(-520, 250), Vector2.LEFT],
+	]
+	for it in traffic:
+		var veh := Vehicle.new()
+		veh.look = VehicleCatalog.make_type(it[0])
+		veh.anchor = it[1]
+		veh.heading = it[2]
+		if veh.place(roads):
+			vehicles.append(veh)
+
 static func _smooth_path(ctrl: Array) -> PackedVector2Array:
 	var out := PackedVector2Array()
 	for i in range(ctrl.size() - 1):
@@ -393,8 +552,11 @@ func clear_all() -> void:
 		set_mode(MODE_DESIGN)
 	push_undo()
 	net.clear()
+	roads.clear()
 	trains.clear()
 	stations.clear()
+	vehicles.clear()
+	buildings.clear()
 	select_train(null)
 	_redraw_world()
 	mark_dirty()
@@ -553,6 +715,113 @@ func remove_station(st: Station) -> void:
 	_redraw_world()
 	mark_dirty()
 
+# --- Building, traffic ----------------------------------------------------
+
+## A tap with the Build tool puts down whatever the palette has picked.
+func build_at(p: Vector2) -> void:
+	if build_kind == BUILD_STATION:
+		place_station_at(p)
+	elif VEHICLE_KINDS.has(build_kind):
+		place_vehicle_at(p, VehicleCatalog.make(build_kind))
+	else:
+		place_building_at(p, build_kind)
+
+func place_building_at(p: Vector2, kind: String) -> void:
+	var b := Building.make(kind, p)
+	var e := BuildingCatalog.entry(kind)
+	if e.get("faces_road", false):
+		var sz: Vector2 = e["size"]
+		b.face_road(roads, p, maxf(sz.y + RoadNetwork.HALF_WIDTH + 20.0, TAP_PX * 2.0 / camera.zoom.x))
+	if _building_blocked(b, null):
+		ui.show_message("No room for that there.")
+		return
+	push_undo()
+	buildings.append(b)
+	Sfx.play_at("track", b.pos)
+	_redraw_world()
+	mark_dirty()
+
+## True if `b` would sit on track, a road, a station or another building
+## (`me` is ignored). Scenery may overlap other scenery.
+func _building_blocked(b: Building, me) -> bool:
+	var ground_only := b.layer() != 1
+	for q in b.footprint():
+		if not net.nearest(q, 17.0).is_empty():
+			return true
+		if not roads.nearest(q, RoadNetwork.HALF_WIDTH + 2.0).is_empty():
+			return true
+		for st in stations:
+			if st.contains(q, 2.0):
+				return true
+		for o in buildings:
+			if o == me or o == b:
+				continue
+			if ground_only and o.layer() != 1:
+				continue
+			if o.contains(q, -1.0):
+				return true
+	# Nothing of the other one poking into this one either.
+	for o in buildings:
+		if o == me or o == b or (ground_only and o.layer() != 1):
+			continue
+		for q in o.footprint():
+			if b.contains(q, -1.0):
+				return true
+	return false
+
+func building_at(p: Vector2) -> Building:
+	var best: Building = null
+	for b in buildings:
+		if b.contains(p, 2.0) and (best == null or b.layer() >= best.layer()):
+			best = b
+	return best
+
+func remove_building(b: Building) -> void:
+	push_undo()
+	buildings.erase(b)
+	Sfx.play_at("erase", b.pos)
+	_redraw_world()
+	mark_dirty()
+
+## Puts vehicle `look` on the road nearest `p`, in the lane on the side
+## of the road `p` is on.
+func place_vehicle_at(p: Vector2, look: Dictionary) -> void:
+	var hit := roads.nearest(p, maxf(RoadNetwork.HALF_WIDTH + 8.0, TAP_PX * 2.0 / camera.zoom.x))
+	if hit.is_empty():
+		ui.show_message("Tap on a road to put a vehicle there." if not roads.is_empty() else "Draw a road first, then put cars on it.")
+		return
+	var seg: TrackSegment = hit["seg"]
+	var t := seg.tangent_at(hit["u"])
+	var right := Vector2(-t.y, t.x)
+	var veh := Vehicle.new()
+	veh.look = look
+	veh.anchor = hit["pos"]
+	veh.heading = t if right.dot(p - (hit["pos"] as Vector2)) >= 0.0 else -t
+	if not veh.place(roads):
+		return
+	for o in vehicles:
+		if o.pos.distance_to(veh.pos) < (o.length() + veh.length()) * 0.5 + 3.0 and o.dir.dot(veh.dir) > 0.0:
+			ui.show_message("Another vehicle is in the way there.")
+			return
+	push_undo()
+	vehicles.append(veh)
+	Sfx.play_at("beep", veh.pos)
+	vehicles_view.queue_redraw()
+	mark_dirty()
+
+func vehicle_at(p: Vector2) -> Vehicle:
+	for i in range(vehicles.size() - 1, -1, -1):
+		if vehicles[i].occupies(p, 4.0 / camera.zoom.x):
+			return vehicles[i]
+	return null
+
+func remove_vehicle(veh: Vehicle) -> void:
+	push_undo()
+	vehicles.erase(veh)
+	Sfx.play_at("erase", veh.pos)
+	vehicles_view.queue_redraw()
+	mark_dirty()
+
 # --- Tracks --------------------------------------------------------------
 
 func _on_tracks_changed() -> void:
@@ -568,10 +837,24 @@ func _on_tracks_changed() -> void:
 		if not st.resolve(net):
 			stations.erase(st)
 			lost_st += 1
+	var lost_v := 0
+	for veh in vehicles.duplicate():
+		if not veh.place(roads):
+			vehicles.erase(veh)
+			lost_v += 1
+	var lost_b := 0
+	for b in buildings.duplicate():
+		if _building_blocked(b, b):
+			buildings.erase(b)
+			lost_b += 1
 	if lost > 0:
 		ui.show_message("Removed %d train%s left without track." % [lost, "" if lost == 1 else "s"])
 	elif lost_st > 0:
 		ui.show_message("Removed %d station%s left without track." % [lost_st, "" if lost_st == 1 else "s"])
+	elif lost_b > 0:
+		ui.show_message("Cleared %d building%s out of the way." % [lost_b, "" if lost_b == 1 else "s"])
+	elif lost_v > 0:
+		ui.show_message("Removed %d vehicle%s left without a road." % [lost_v, "" if lost_v == 1 else "s"])
 	_redraw_world()
 	mark_dirty()
 
@@ -609,6 +892,10 @@ func _pan(screen_delta: Vector2) -> void:
 func fit_view() -> void:
 	var r := net.bounds()
 	if net.is_empty():
+		r = roads.bounds()
+	elif not roads.is_empty():
+		r = r.merge(roads.bounds())
+	if net.is_empty() and roads.is_empty():
 		camera.position = Vector2.ZERO
 		camera.zoom = Vector2.ONE
 		return
@@ -721,11 +1008,13 @@ func _pointer_down(pos: Vector2) -> void:
 	if mode != MODE_DESIGN:
 		return
 	match tool:
-		TOOL_DRAW:
+		TOOL_DRAW, TOOL_ROAD:
 			_gesture = "stroke"
+			_stroke_net = roads if tool == TOOL_ROAD else net
 			_stroke = PackedVector2Array([w])
+			overlay.road = tool == TOOL_ROAD
 			overlay.stroke = _stroke
-			overlay.snap_start = net.snap_preview(w, SNAP_PX / camera.zoom.x)
+			overlay.snap_start = _stroke_net.snap_preview(w, SNAP_PX / camera.zoom.x)
 			overlay.snap_end = Vector2.INF
 			overlay.queue_redraw()
 			ui.dismiss_sheets_for_drag()
@@ -761,7 +1050,7 @@ func _pointer_move(pos: Vector2) -> void:
 			if _stroke[_stroke.size() - 1].distance_to(w) >= 3.0 / camera.zoom.x:
 				_stroke.append(w)
 				overlay.stroke = _stroke
-				overlay.snap_end = net.snap_preview(w, SNAP_PX / camera.zoom.x)
+				overlay.snap_end = _stroke_net.snap_preview(w, SNAP_PX / camera.zoom.x)
 				overlay.queue_redraw()
 		"smooth":
 			_brush_pos = w
@@ -787,10 +1076,16 @@ func _pointer_up(pos: Vector2) -> void:
 			var stroke := _stroke
 			_stroke = PackedVector2Array()
 			if TrackNetwork._polyline_length(stroke) < TrackNetwork.MIN_STROKE:
-				toggle_switch_near(screen_to_world(pos))
+				if _stroke_net == net:
+					toggle_switch_near(screen_to_world(pos))
 				return
 			push_undo()
-			if net.add_stroke(stroke, SNAP_PX / camera.zoom.x) == null:
+			var laid: TrackSegment
+			if _stroke_net == roads:
+				laid = roads.add_road(stroke, SNAP_PX / camera.zoom.x)
+			else:
+				laid = net.add_stroke(stroke, SNAP_PX / camera.zoom.x)
+			if laid == null:
 				_undo.pop_back()
 				ui.on_undo_changed(_undo.size())
 				return
@@ -800,8 +1095,14 @@ func _pointer_up(pos: Vector2) -> void:
 			if _brush_held < BRUSH_TAP_TIME:
 				# A tap: smooth the whole piece under it.
 				overlay.clear()
-				var hit := net.nearest(screen_to_world(pos), TAP_PX / camera.zoom.x)
-				if not hit.is_empty() and net.smooth_segment(hit["seg"]):
+				var at := screen_to_world(pos)
+				var hit := net.nearest(at, TAP_PX / camera.zoom.x)
+				var on := net
+				var road_hit := roads.nearest(at, TAP_PX / camera.zoom.x)
+				if not road_hit.is_empty() and (hit.is_empty() or road_hit["dist"] < hit["dist"]):
+					hit = road_hit
+					on = roads
+				if not hit.is_empty() and on.smooth_segment(hit["seg"]):
 					_on_tracks_changed()
 				else:
 					_drop_undo()
@@ -833,11 +1134,16 @@ func _brush_tick(delta: float) -> void:
 		return
 	var amount := 1.0 - exp(-BRUSH_RATE * delta)
 	var moved := net.smooth_brush(_brush_pos, BRUSH_PX / camera.zoom.x, amount)
-	if moved.is_empty():
+	var moved_roads := roads.smooth_brush(_brush_pos, BRUSH_PX / camera.zoom.x, amount)
+	if moved.is_empty() and moved_roads.is_empty():
 		return
-	for seg in moved:
+	for seg in moved + moved_roads:
 		if not _smoothed.has(seg):
 			_smoothed.append(seg)
+	if not moved_roads.is_empty():
+		for veh in vehicles:
+			veh.place(roads)
+		road_view.queue_redraw()
 	# Keep trains and platforms sitting on the track as it moves under them.
 	for t in trains:
 		t.place(net)
@@ -853,6 +1159,7 @@ func _finish_brush() -> void:
 		_drop_undo()
 		return
 	net.finish_smoothing(_smoothed)
+	roads.finish_smoothing(_smoothed)
 	_smoothed = []
 	_on_tracks_changed()
 
@@ -876,20 +1183,35 @@ func _tap(w: Vector2) -> void:
 			if not hit.is_empty():
 				remove_train(hit[0])
 				return
+			var veh := vehicle_at(w)
+			if veh != null:
+				remove_vehicle(veh)
+				return
 			var st := station_at(w)
 			if st != null:
 				remove_station(st)
 				return
 			var seg_hit := net.nearest(w, TAP_PX / camera.zoom.x)
+			var road_hit := roads.nearest(w, maxf(TAP_PX / camera.zoom.x, RoadNetwork.HALF_WIDTH))
+			var b := building_at(w)
+			if b != null and seg_hit.is_empty() and road_hit.is_empty():
+				remove_building(b)
+				return
+			var on := net
+			if not road_hit.is_empty() and (seg_hit.is_empty() or road_hit["dist"] < seg_hit["dist"]):
+				seg_hit = road_hit
+				on = roads
 			if seg_hit.is_empty():
 				return
 			push_undo()
-			net.remove_segment(seg_hit["seg"])
+			on.remove_segment(seg_hit["seg"])
 			Sfx.play_at("erase", seg_hit["pos"])
 			_on_tracks_changed()
 		TOOL_TRAIN:
 			place_train_at(w)
 		TOOL_STATION:
 			place_station_at(w)
+		TOOL_BUILD:
+			build_at(w)
 		TOOL_DRAW:
 			toggle_switch_near(w)

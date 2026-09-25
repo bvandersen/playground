@@ -2,11 +2,15 @@ extends Button
 class_name IconButton
 
 ## A button that shows a picture instead of words: one of IconArt's icons,
-## or (when `car` is set) a little wagon painted by WagonArt, with an
-## optional "+" / "x" badge. The words live on as the tooltip.
+## or (when `car` is set) a little wagon painted by WagonArt, or (when
+## `thing` is set) whatever that painter draws -- a building or a road
+## vehicle in the Build palette -- with an optional "+" / "x" badge. The
+## words live on as the tooltip.
 
 var icon_id := ""
 var car := {}
+## Paints the picture: called with (TriBatch, button size).
+var thing: Callable
 var badge := ""
 var icon_fraction := 0.74
 ## The picture baked into one mesh (see TriBatch); held so it outlives _draw.
@@ -34,7 +38,9 @@ func _draw() -> void:
 	if self_modulate.a != alpha:
 		self_modulate.a = alpha
 	var b := TriBatch.new()
-	if not car.is_empty():
+	if thing.is_valid():
+		thing.call(b, size)
+	elif not car.is_empty():
 		_draw_car(b)
 	elif icon_id != "":
 		IconArt.paint(b, icon_id, center, box)

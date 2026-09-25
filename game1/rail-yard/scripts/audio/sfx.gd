@@ -23,6 +23,8 @@ const SOUNDS := {
 	"brake": {"db": -14.0, "gap": 0.4, "max": 2},
 	"chuff": {"db": -13.0, "gap": 0.035, "max": 5},
 	"clack": {"db": -15.0, "gap": 0.04, "max": 4},
+	"bell": {"db": -12.0, "gap": 0.2, "max": 2},
+	"beep": {"db": -10.0, "gap": 0.3, "max": 2},
 }
 const VOICES_2D := 20
 const VOICES_UI := 4

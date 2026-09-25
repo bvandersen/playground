@@ -46,6 +46,8 @@ static func paint(ci, id: String, center: Vector2, size: float) -> void:
 		"pause": _pause(ci)
 		"sound": _sound(ci)
 		"station": _station(ci)
+		"road": _road(ci)
+		"house": _house(ci)
 	ci.draw_set_transform(Vector2.ZERO, 0.0)
 
 ## A small round badge ("plus" / "cross") in the top-right corner of a
@@ -310,3 +312,22 @@ static func _station(ci) -> void:
 	disc(ci, Vector2(9.1, 8.2), 1.3, WHITE)
 	disc(ci, Vector2(19.2, 10.6), 1.7, SKIN)
 	rrect(ci, Rect2(17.3, 12.6, 3.8, 5.4), 1.2, BLUE)
+
+## A road winding away with a dashed white line: "draw a road".
+static func _road(ci) -> void:
+	var grey := Color(0.42, 0.44, 0.47)
+	poly(ci, PackedVector2Array([Vector2(1.5, 22.5), Vector2(9.5, 1.5), Vector2(14.5, 1.5), Vector2(22.5, 22.5)]), grey)
+	stroke(ci, [Vector2(1.5, 22.5), Vector2(9.5, 1.5)], WHITE.darkened(0.2), 1.0)
+	stroke(ci, [Vector2(22.5, 22.5), Vector2(14.5, 1.5)], WHITE.darkened(0.2), 1.0)
+	for seg in [[19.5, 15.5], [12.0, 9.0], [6.0, 4.0]]:
+		stroke(ci, [Vector2(12, seg[0]), Vector2(12, seg[1])], YELLOW, 1.8 - (19.5 - seg[0]) * 0.06)
+
+## A little house with a red roof, a door and a window: "build".
+static func _house(ci) -> void:
+	rrect(ci, Rect2(4.5, 11, 15, 10.5), 0.6, Color(0.96, 0.88, 0.7))
+	poly(ci, PackedVector2Array([Vector2(2.2, 12.2), Vector2(12, 3.2), Vector2(21.8, 12.2)]), RED)
+	rrect(ci, Rect2(15.5, 4.5, 2.8, 5), 0.4, RED.darkened(0.3))
+	rrect(ci, Rect2(10, 15, 4, 6.5), 0.5, Color(0.5, 0.3, 0.16))
+	rrect(ci, Rect2(15.5, 13.5, 3, 3), 0.4, BLUE)
+	rrect(ci, Rect2(5.8, 13.5, 3, 3), 0.4, BLUE)
+	rrect(ci, Rect2(1, 21, 22, 1.6), 0.6, GREEN.darkened(0.2))

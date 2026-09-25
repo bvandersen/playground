@@ -464,6 +464,33 @@ func _try_merge(node: TrackNode) -> void:
 
 # --- Geometry helpers ------------------------------------------------------
 
+## Where two pieces cross: [[point, u along a, u along b], ...]. Used for
+## road crossroads and for level crossings between a road and the track.
+static func crossings(a: TrackSegment, b: TrackSegment) -> Array:
+	var out := []
+	var pa := a.points
+	var pb := b.points
+	for i in range(1, pa.size()):
+		var a0 := pa[i - 1]
+		var a1 := pa[i]
+		var lo := Vector2(minf(a0.x, a1.x), minf(a0.y, a1.y))
+		var hi := Vector2(maxf(a0.x, a1.x), maxf(a0.y, a1.y))
+		for j in range(1, pb.size()):
+			var b0 := pb[j - 1]
+			var b1 := pb[j]
+			if maxf(b0.x, b1.x) < lo.x or minf(b0.x, b1.x) > hi.x or maxf(b0.y, b1.y) < lo.y or minf(b0.y, b1.y) > hi.y:
+				continue
+			var hit = Geometry2D.segment_intersects_segment(a0, a1, b0, b1)
+			if hit == null:
+				continue
+			var p: Vector2 = hit
+			if not out.is_empty() and (out[out.size() - 1][0] as Vector2).distance_to(p) < 4.0:
+				continue
+			var ua: float = a.cum[i - 1] + a0.distance_to(p)
+			var ub: float = b.cum[j - 1] + b0.distance_to(p)
+			out.append([p, ua, ub])
+	return out
+
 static func _polyline_length(pts: PackedVector2Array) -> float:
 	var l := 0.0
 	for i in range(1, pts.size()):

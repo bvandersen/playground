@@ -1,10 +1,12 @@
 extends Node2D
 class_name DrawOverlay
 
-## Live preview while laying track: the stroke so far as a ghost of the
-## track bed, plus a ring wherever its start/end will join existing track.
+## Live preview while laying track or a road: the stroke so far as a
+## ghost of the track bed (or the road), plus a ring wherever its start/end
+## will join existing track (or road).
 
 var stroke := PackedVector2Array()
+var road := false # drawing a road: wider, darker ghost
 var snap_start := Vector2.INF
 var snap_end := Vector2.INF
 ## The smoothing brush's ring while it's held (radius 0 = hidden).
@@ -21,7 +23,10 @@ func clear() -> void:
 
 func _draw() -> void:
 	if stroke.size() >= 2:
-		draw_polyline(stroke, Color(1, 1, 1, 0.22), 26.0, true)
+		if road:
+			draw_polyline(stroke, Color(0.15, 0.16, 0.18, 0.45), RoadNetwork.HALF_WIDTH * 2.0, true)
+		else:
+			draw_polyline(stroke, Color(1, 1, 1, 0.22), 26.0, true)
 		draw_polyline(stroke, Color(1, 1, 1, 0.85), 2.0, true)
 	for p in [snap_start, snap_end]:
 		if p != Vector2.INF:
