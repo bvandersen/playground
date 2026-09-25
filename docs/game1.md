@@ -287,7 +287,8 @@ to-do list** below.
 - [x] 2. Android export preset, launcher icons, Back button, safe area
 - [x] 3. Build script + workflow for a debug APK and a signed AAB
 - [x] Play listing art, listing text, privacy policy page
-- [ ] 4. First CI build run and tested on a real phone
+- [x] 4a. CI builds the debug APK (16 KB aligned, our icons)
+- [ ] 4b. Tested on a real phone
 - [ ] 5. Play Console: account, app, listing, policies
 - [ ] 6. Internal testing, then closed test (12+ testers, 14 days)
 - [ ] 7. Production release
@@ -379,9 +380,13 @@ ETC2 checks and stops only at the missing Android SDK. (This container
 can't reach `dl.google.com`, which is why the build runs in CI.) The Web
 build was re-exported with 4.3 and still boots in headless Chromium with
 no errors. The Back and pause handling were exercised headless on both
-4.3 and 4.7.2. **Not verified**: a completed Gradle build (the first CI
-run is the test) and anything on a real device, including the safe-area
-insets.
+4.3 and 4.7.2. The CI workflow has built the debug APK end to end (run 2, 25 Sep
+2026): Gradle build, our launcher icons, arm64 libraries at `0x4000` (16
+KB). Run 1 exposed a bug, now fixed: the script's copy step dropped
+`art/android/`, so that build had Godot's default icon. The script now
+fails if an icon is missing. **Not verified**: the signed `aab` path
+(needs your upload key) and anything on a real device, including the
+safe-area insets.
 
 ### Your to-do list
 
@@ -391,10 +396,11 @@ In order. Steps 1–3 need no Google account.
    `com.bvandersen.railyard` in `game1/rail-yard/export_presets.cfg`. It
    can **never** change after the first upload to Play. Change it now if
    you'd rather have something else.
-2. **Run the debug build**: GitHub → Actions → "game1 Android build" →
-   Run workflow → `apk`. If it fails, send me the log. Download the
-   artifact, unzip it, and `adb install rail-yard.apk` (or copy it to the
-   phone and open it, allowing installs from unknown sources).
+2. **Install the debug build**: a finished one is already there:
+   GitHub → Actions → "game1 Android build" → run #2 → artifact
+   `rail-yard-apk-2` (or start a new run with `apk`). Unzip it and
+   `adb install rail-yard.apk`, or copy it to the phone and open it,
+   allowing installs from unknown sources.
 3. **Test on a real phone** (the game's first real touch test): drawing
    track, the Smooth brush, pinch-zoom, dragging trains, the train
    sheet, Play, flipping switches, Back (closes the sheet, then leaves
