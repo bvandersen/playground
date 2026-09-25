@@ -31,6 +31,13 @@ func _process(_d: float) -> bool:
 		for c in layer.get_children():
 			g += tris(c.mesh)
 	print("%-16s %7d (all chunks, culled to screen)" % ["ground", g])
+	var tr := 0
+	for t in main.trains:
+		for i in range(t.cars.size()):
+			var w: Dictionary = t.world[i]
+			tr += tris(root.get_node("WagonCatalog").car_mesh(t.cars[i])) + tris(root.get_node("WagonCatalog").shadow_mesh(w["len"], w["width"])) + 2 * tris(root.get_node("WagonCatalog").bogie_mesh(w["width"]))
+	print("%-16s %7d (bodies, shadows, bogies; drawn every frame)" % ["trains", tr])
+	print("%-16s %7d particles" % ["smoke", main.smoke._puffs.size()])
 	var kinds := {}
 	for b in main.buildings:
 		var tb := TriBatch.new()

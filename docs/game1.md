@@ -540,6 +540,96 @@ Result: **11 → ~20 FPS** in Design and Play with the camera still, and
 every frame (Follow), it costs the same as before plus one screen-sized
 quad.
 
+### Next optimisations (planned, not started)
+
+Picked up from here in a later session. Same rule as every pass so far:
+**no visible change**. Anything that trades looks for speed (lower
+resolution on high-DPI phones, fewer circle segments, a 30 Hz traffic
+tick) is out unless the user asks for it.
+
+**Where things stand** (demo layout, after the third pass): headless
+Chromium ~21 FPS in Design, ~16 while panning, ~20 in Play, with
+~38k triangles and ~82 draw calls a frame in Play. What's still drawn
+every frame (`tools/_tris.gd`): trains 15k triangles (baked meshes, only
+placed), road traffic 11k (**rebuilt on the CPU and re-uploaded every
+physics tick**), mountains 6k, people 1.6k (also rebuilt every frame),
+bridge decks 1.5k, smoke quads. A physics tick costs ~2.1 ms natively
+(`tools/_prof.gd`), of which road vehicles' `drive` is ~0.9 ms.
+
+**Tools to verify each step** (all already in the repo):
+
+- `node scripts/game1-fps.mjs [build dir]`: FPS, draw calls and triangles
+  per frame for Design, panning and Play. Compare against a build of
+  the previous commit (see the script's header), not against a phone.
+- `tools/_test_static_cache.gd` (Xvfb + opengl3, see its header): the
+  pattern for proving "same pixels": the same frozen frame drawn both
+  ways, zero differing pixels. Copy it for any rendering change.
+- `tools/_det.gd`: seeded simulation digest, which must not change for
+  a simulation-only optimisation (run before/after with `git stash`).
+- `tools/_prof.gd`: ms per physics tick by part. `tools/_tris.gd`:
+  triangles per view.
+
+**The list, most promising first:**
+
+1. **Measure on a real old phone first.** Everything so far is from
+   SwiftShader, which rasterises on the CPU and so over-weights
+   triangles and pixels compared to a real GPU. Add a hidden FPS and
+   frame-time readout (e.g. `?fps` in the URL on the Web, or a long
+   press on the Menu button), then check which of the items below
+   matter on the device the user actually has. It's also the check the
+   Android to-do list asks for.
+2. **Road traffic mesh rebuilt every tick** (`VehiclesView._draw`):
+   ~33k vertices transformed in GDScript, then a fresh `ArrayMesh`
+   uploaded each physics tick (the high view does the same for whatever
+   is up on a road bridge). Options:
+   draw each vehicle's baked mesh with `draw_mesh` and a transform, as
+   `TrainsView` does (about 40 more draw calls, near-zero CPU); or keep
+   one mesh but only rebuild it when a vehicle moved (they all move in
+   Play, so that only helps in Design). Needs a real-device measurement
+   to pick between CPU/upload and draw calls. Pixels should be the same
+   if draw order is kept (all shadows, then all bodies, then extras).
+   `PeopleView` has the same pattern at a smaller scale.
+3. **Redraw only when something changed**: `Main._process` redraws
+   `trains_high_view` and `vehicles_high_view` every frame even with
+   nothing up on a bridge, and `people_view` every frame whenever a
+   station exists, even in Design with nobody moving. Skip the redraw
+   when the set on a bridge is empty and unchanged, or when no one
+   moved. `_update_levels()` also runs every frame and could run only
+   when something moved or the layout changed.
+4. **Panning and Follow re-render the whole static cache** every frame
+   the camera moves (~16 FPS vs ~21 still). A cache larger than the
+   screen, reused by shifting the quad, is only pixel-exact for
+   whole-pixel moves at the same zoom, and camera positions are
+   fractional (Follow lerps), so it would mean snapping the camera to
+   whole screen pixels while it moves. That's a (tiny) visible change,
+   so it needs the user's OK. Without snapping, the only exact win is
+   making the static layers themselves cheaper (item 6).
+5. **Cache the mountains and bridge decks too** (7.7k triangles; static,
+   but drawn *above* the trains). This needs a second cache with a
+   transparent background, composited with premultiplied alpha
+   (`CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA` on the quad), because
+   Godot's 2D blend already writes premultiplied colour into a
+   transparent target. Overlapping translucent shapes may round
+   differently by 1/255, so run the pixel test. If it isn't exactly
+   zero, ask the user whether ±1/255 is acceptable.
+6. **Fewer triangles in the static layers** (they only matter now when
+   the cache re-renders, i.e. panning, Follow and edits): the painters
+   tessellate every circle for the closest zoom on a high-DPI phone
+   (`TriBatch.MAX_PX_PER_UNIT = 8`, at least 10 segments), and buildings
+   are 48k triangles (flowers 12k, houses 11k, woods 10k, farm 7k).
+   Merging overlapping same-colour shapes, or dropping shapes fully
+   hidden under others, is exact. Coarser circles are not.
+7. **Road vehicle look-ahead** (~0.9 ms of a 2.1 ms tick): each vehicle
+   tests every other within 230 px at 26 probe points. Bucketing
+   vehicles by the road piece they're on would cut the candidates. Must
+   keep `tools/_det.gd`'s digest identical (the second pass did).
+8. **Newer Godot for the Web build**: the Web export is still 4.3 (the
+   Android build is 4.7.2). Check whether later versions draw 2D in the
+   Compatibility renderer more cheaply. Moving means re-measuring
+   `TriBatch`'s anti-aliasing geometry against the new renderer (see
+   "Why Android builds with Godot 4.7.2"), so only worth it if the
+   release notes show a real 2D gain.
+
 ## Android build and Google Play release
 
 Goal: ship Rail Yard as an Android app on Google Play, built headlessly
