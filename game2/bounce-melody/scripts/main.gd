@@ -40,6 +40,7 @@ var _autosave_countdown: float = -1.0
 var _drag_item: Item = null
 var _vector_item: Item = null
 var _camera_offset := Vector2.ZERO
+var _commit_tap_frame := -1
 
 func _ready() -> void:
 	randomize()
@@ -295,6 +296,20 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _handle_press(pressed: bool, screen_pos: Vector2) -> void:
 	if pressed:
+		if ui.is_over_panel(screen_pos):
+			return
+		# First tap off a number box being typed into just commits it (the
+		# SpinBox applies its text on focus loss) and closes the keyboard,
+		# without also changing the selection.
+		# A touch arrives twice (ScreenTouch + its emulated mouse press, same
+		# frame), so remember the frame to swallow the twin as well.
+		if Engine.get_process_frames() == _commit_tap_frame:
+			return
+		var focused := get_viewport().gui_get_focus_owner()
+		if focused is LineEdit:
+			focused.release_focus()
+			_commit_tap_frame = Engine.get_process_frames()
+			return
 		var world_pos := screen_pos - _camera_offset
 		# The selected item's arrow tip is a handle: dragging it sets the
 		# velocity vector directly (direction and speed at once).

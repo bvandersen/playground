@@ -438,6 +438,19 @@ What was built:
 - **Every slider has a typed numeric box** (`ui/number_field.gd`, a
   slider + `SpinBox` kept in sync). The Web export's experimental virtual
   keyboard is enabled so the boxes are typeable on phones.
+  Three Web-only gotchas, fixed after "tapping a number box hides the
+  sheet" was reported (and reproduced in Playwright with touch
+  emulation): a press on a SpinBox's text box can reach
+  `Main._unhandled_input` unconsumed, where it read as an empty-canvas
+  tap and deselected the item — presses over a visible panel are now
+  ignored there (`UIRoot.is_over_panel`). Phone keystrokes go to a
+  hidden HTML `<input>`, so Enter never reached the SpinBox (which only
+  applies typed text on Enter or focus loss); Enter now blurs that input
+  and `UIRoot._process` releases the box's focus once it's blurred,
+  committing the number, and the first canvas tap after typing just
+  commits too. And the tap swallowed select-all-on-focus, so digits
+  appended to the old value; `NumberField` now selects it and re-opens
+  the keyboard with that selection.
 - **Velocity is a vector.** In Design mode every item draws a thin arrow
   from its edge along its velocity (length proportional to speed,
   `Item.VECTOR_SCALE`); the selected item's arrow tip has a handle that

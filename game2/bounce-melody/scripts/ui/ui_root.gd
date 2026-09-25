@@ -23,6 +23,7 @@ const PALETTE := [
 
 var main: Node
 
+var top_strip: PanelContainer
 var mode_button: Button
 var add_button: Button
 var room_button: Button
@@ -70,6 +71,46 @@ func setup(main_ref: Node) -> void:
 	_build_saves_sheet()
 	on_selection_changed(null)
 	on_mode_changed(main.MODE_DESIGN)
+	_install_web_enter_to_blur()
+
+# --- Typing on a phone ---------------------------------------------------
+#
+# On the Web export, phone typing goes into a hidden HTML <input> that
+# Godot's virtual keyboard support focuses -- Godot's own key handling
+# only listens on the canvas, so Enter/Done never reaches the SpinBox,
+# which only applies typed text on Enter or when it loses focus. So:
+# Enter blurs that hidden input, and once it's blurred (Enter, or the
+# keyboard dismissed) the SpinBox's focus is released, committing the
+# number.
+
+var _vk_input_seen := false
+
+func _install_web_enter_to_blur() -> void:
+	if not OS.has_feature("web"):
+		return
+	JavaScriptBridge.eval("""
+		document.addEventListener('keydown', function (e) {
+			var t = e.target;
+			if (e.key === 'Enter' && t && t.tagName === 'INPUT' && t.id !== 'canvas') {
+				t.blur();
+			}
+		}, true);
+	""", true)
+
+func _process(_delta: float) -> void:
+	if not OS.has_feature("web"):
+		return
+	var owner := get_viewport().gui_get_focus_owner()
+	if not (owner is LineEdit):
+		_vk_input_seen = false
+		return
+	var typing_in_vk: bool = JavaScriptBridge.eval(
+		"document.activeElement !== null && document.activeElement.tagName === 'INPUT'", true)
+	if typing_in_vk:
+		_vk_input_seen = true
+	elif _vk_input_seen:
+		_vk_input_seen = false
+		owner.release_focus()
 
 func _dock_top(control: Control, height: float) -> void:
 	control.anchor_left = 0.0
@@ -118,6 +159,17 @@ func _row(parent: Node, label_text: String = "") -> HBoxContainer:
 		row.add_child(label)
 	return row
 
+## True when `screen_pos` lands on a visible panel. Main checks this
+## before treating a press as a canvas tap: on the Web export a press on
+## a SpinBox's text box isn't always consumed by the GUI (it still
+## reaches _unhandled_input), and read as an empty-canvas tap it would
+## deselect the item and hide the very sheet being edited.
+func is_over_panel(screen_pos: Vector2) -> bool:
+	for panel in [top_strip, item_sheet, room_sheet, saves_sheet]:
+		if panel.visible and panel.get_global_rect().has_point(screen_pos):
+			return true
+	return false
+
 func _show_sheet(sheet: Control) -> void:
 	for s in [item_sheet, room_sheet, saves_sheet]:
 		s.visible = s == sheet
@@ -134,6 +186,7 @@ func _build_top_strip() -> void:
 	var strip := PanelContainer.new()
 	_dock_top(strip, TOP_STRIP_HEIGHT)
 	add_child(strip)
+	top_strip = strip
 
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)

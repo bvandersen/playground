@@ -41,7 +41,9 @@ func _init(label_text: String, min_v: float, max_v: float, step: float = 1.0, sh
 	spin.custom_minimum_size = Vector2(96, 0)
 	if not show_slider:
 		spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	spin.get_line_edit().virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER_DECIMAL
+	var line_edit := spin.get_line_edit()
+	line_edit.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER_DECIMAL
+	line_edit.focus_entered.connect(_select_all_for_typing, CONNECT_DEFERRED)
 	spin.value_changed.connect(_on_spin_changed)
 	add_child(spin)
 
@@ -51,6 +53,20 @@ func set_value_silently(v: float) -> void:
 		slider.value = v
 	spin.value = v
 	_silent = false
+
+## A tap focuses the box on the press, so LineEdit defers
+## select_all_on_focus to the release -- which the Web export's virtual
+## keyboard swallows, leaving the caret after the old number. Select it
+## here instead, and re-open the phone keyboard with that selection so
+## the first digit typed replaces the old value rather than appending.
+func _select_all_for_typing() -> void:
+	var line_edit := spin.get_line_edit()
+	if not line_edit.has_focus():
+		return
+	line_edit.select_all()
+	if DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
+		DisplayServer.virtual_keyboard_show(line_edit.text, line_edit.get_global_rect(),
+			DisplayServer.KEYBOARD_TYPE_NUMBER_DECIMAL, -1, 0, line_edit.text.length())
 
 func _on_slider_changed(v: float) -> void:
 	if _silent:
