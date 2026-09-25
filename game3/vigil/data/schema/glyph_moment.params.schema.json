@@ -21,8 +21,6 @@
 		"static_s": {"type": "number", "minimum": 0, "description": "Seconds of full static after it is gone."},
 		"payoff_hold": {"type": "number", "minimum": 0, "description": "Seconds the payoff line holds."},
 		"width": {"type": "number", "exclusiveMinimum": 0, "description": "Stroke width in px."},
-		"grain": {"type": "number", "minimum": 0, "maximum": 1, "description": "Resting film-grain opacity."},
-		"static": {"type": "number", "minimum": 0, "maximum": 1, "description": "Static opacity at its peak."},
-		"color": {"type": "string", "description": "Html colour of the glyph and text."}
+		"static": {"type": "number", "minimum": 0, "maximum": 1, "description": "Static opacity at its peak."}
 	}
 }

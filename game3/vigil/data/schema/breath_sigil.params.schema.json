@@ -13,7 +13,6 @@
 		"span": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2, "description": "Ring radius at empty and full, as a fraction of the maximum."},
 		"turn_per_cycle": {"type": "number", "description": "Turns the star rotates per cycle (signed)."},
 		"stop_at": {"type": "number", "minimum": 0, "maximum": 1, "description": "Where in the final inhale the ring freezes."},
-		"hold_at_end": {"type": "number", "minimum": 0, "description": "Seconds of stillness after the freeze before the rite ends."},
-		"color": {"type": "string", "description": "Html colour of the lines."}
+		"hold_at_end": {"type": "number", "minimum": 0, "description": "Seconds of stillness after the freeze before the rite ends."}
 	}
 }

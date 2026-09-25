@@ -3,8 +3,9 @@ extends SceneTree
 ## Saves PNG screenshots of the screens (needs a display -- e.g. xvfb-run):
 ##   xvfb-run -s "-screen 0 480x800x24" godot --path game3/vigil \
 ##       --rendering-driver opengl3 -s tools/screenshot.gd -- <out dir>
-## Screens: threshold, seal, scroll (after entering two glyphs), rite
-## (free.breath.001 mid-breath).
+## Screens: threshold, seal, scroll (after entering two glyphs), and
+## every recipe mid-rite as rite-<id>.png (each in its own style).
+## `-- <out dir> <id> ...` shoots only those recipes.
 
 func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
@@ -32,11 +33,24 @@ func _initialize() -> void:
 	scroll.free()
 
 	var registry = root.get_node("Registry")
-	var rite = registry.instantiate(registry.get_recipe("free.breath.001"), 1)
-	root.add_child(rite)
-	rite.begin()
-	await _shot(out, "rite", 2.2)
+	var ids: Array = args.slice(1) if args.size() > 1 else registry.recipes.keys()
+	ids.sort()
+	for id in ids:
+		var rite = registry.instantiate(registry.get_recipe(id), 1)
+		root.add_child(rite)
+		rite.begin()
+		await _shot(out, "rite-%s" % id, _moment(rite))
+		rite.free()
 	quit()
+
+## Seconds into a rite when it shows the most of its look.
+func _moment(rite) -> float:
+	match rite.engine_id():
+		"glyph_moment":
+			return float(rite.params["glyph_at"]) + minf(0.4, float(rite.params["show_s"]) * 0.4)
+		"breath_sigil":
+			return float(rite.rhythm[0]) * 0.8
+	return 2.0
 
 func _shot(dir: String, name: String, wait_s: float) -> void:
 	await create_timer(wait_s).timeout

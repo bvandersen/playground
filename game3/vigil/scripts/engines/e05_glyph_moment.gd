@@ -1,20 +1,18 @@
 extends Ritual
 
-## r05 The Glyph of the Moment (docs/game3.md). Black with grain; "Look.";
-## then a glyph no one has seen before is shown for exactly `show_s`
-## seconds and dissolves into static for good. It is generated from the
+## r05 The Glyph of the Moment (docs/game3.md). A bare ground with grain;
+## "Look."; then a glyph no one has seen before is shown for exactly
+## `show_s` seconds and dissolves into static for good. It is generated from the
 ## day's seed *and* the clock's microseconds, so not even the same day
 ## reproduces it, and it is never saved. Strokes run on an n x n lattice
 ## (straight moves and arcs); shapes that are too simple to be a sigil --
-## few nodes, no junction, no curve or diagonal -- are rejected.
+## few nodes, no junction, no curve or diagonal -- are rejected. Ground,
+## ink, the hand the strokes are laid in and the colour of the static are
+## the recipe's style, not this file's.
 ## (The sharp tone before the glyph arrives with Phase 1's Synth.)
 
 const ENGINE_ID := "glyph_moment"
 
-const NOISE_FRAMES := 6
-const NOISE_W := 120
-const NOISE_H := 200
-const NOISE_FPS := 24.0
 const DOT_SPACING := 2.5 # px between the dots the glyph dissolves into
 const ARC_POINTS := 14
 
@@ -36,9 +34,7 @@ static func defaults() -> Dictionary:
 		"static_s": 3.0,
 		"payoff_hold": 9.0,
 		"width": 3.0,
-		"grain": 0.07,
-		"static": 0.5,
-		"color": "#e8dcc0",
+		"static": 0.5, # grain opacity at the height of the static
 	}
 
 enum Stage { WAIT, SHOW, DISSOLVE, STATIC, PAYOFF }
@@ -50,9 +46,6 @@ var running := false
 
 var strokes: Array = [] # of PackedVector2Array, lattice units
 var dots: Array = [] # [screen pos, dissolve threshold 0..1, drift]
-var noise: Array = [] # of ImageTexture
-var noise_i := 0
-var noise_t := 0.0
 var static_a := 0.0
 var look := Label.new()
 var payoff := Label.new()
@@ -60,19 +53,14 @@ var payoff_text := ""
 
 func setup(r: Dictionary) -> void:
 	super.setup(r)
-	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	for i in NOISE_FRAMES:
-		noise.append(_noise_frame())
-	static_a = float(params["grain"])
-	var col := Color(params["color"])
+	static_a = float(style.data["grain"])
 	for l in [look, payoff]:
 		l.modulate = Color(1, 1, 1, 0)
-		l.add_theme_color_override("font_color", col)
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		add_child(l)
-	look.add_theme_font_size_override("font_size", 22)
-	payoff.add_theme_font_size_override("font_size", 20)
+	style.dress(look, 22)
+	style.dress(payoff, 20)
 	payoff.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	look.text = line("look")
 	payoff_text = line("payoff") # set in _layout(), once it has a width to wrap to
@@ -92,8 +80,8 @@ func payoff_reached() -> bool:
 
 func _layout() -> void:
 	var size := viewport_size()
-	look.size = Vector2(size.x, 40)
-	look.position = Vector2(0, size.y * 0.5 - 20)
+	look.size = Vector2(size.x, 60)
+	look.position = Vector2(0, size.y * 0.5 - 30)
 	payoff.size = Vector2(size.x - 96, size.y * 0.5)
 	payoff.position = Vector2(48, size.y * 0.25)
 	payoff.text = payoff_text
@@ -115,11 +103,7 @@ func _process(delta: float) -> void:
 		return
 	t += delta
 	stage_t += delta
-	noise_t += delta
-	if noise_t >= 1.0 / NOISE_FPS:
-		noise_t = 0.0
-		noise_i = (noise_i + 1 + rng.randi() % (NOISE_FRAMES - 1)) % NOISE_FRAMES
-	var grain := float(params["grain"])
+	var grain := float(style.data["grain"])
 	var full := float(params["static"])
 	match stage:
 		Stage.WAIT:
@@ -162,16 +146,14 @@ static func _window(time: float, from: float, hold: float, fade: float) -> float
 
 func _draw() -> void:
 	var size := viewport_size()
-	if not noise.is_empty():
-		draw_texture_rect(noise[noise_i], Rect2(Vector2.ZERO, size), false, Color(1, 1, 1, static_a))
-	var col := Color(params["color"])
+	style.draw_ground(self, size, t)
+	style.draw_grain(self, size, t, static_a)
+	var col := style.ink
 	var w := float(params["width"])
 	match stage:
 		Stage.SHOW:
 			for s in strokes:
-				var pts := _to_screen(s)
-				draw_polyline(pts, Color(col, 0.12), w * 4.0, true)
-				draw_polyline(pts, col, w, true)
+				style.stroke(self, _to_screen(s), w)
 		Stage.DISSOLVE:
 			var p := clampf(stage_t / float(params["dissolve_s"]), 0.0, 1.0)
 			for d in dots:
@@ -179,12 +161,12 @@ func _draw() -> void:
 				if p < thr:
 					var shake := (p / maxf(thr, 0.01)) * 1.5
 					var pos: Vector2 = d[0] + Vector2(rng.randf_range(-shake, shake), rng.randf_range(-shake, shake))
-					draw_rect(Rect2(pos - Vector2(w, w) * 0.5, Vector2(w, w)), col)
+					style.dot(self, pos, w, col)
 				elif p < thr + 0.15:
 					# The dot turns to a speck of static and drifts off.
 					var k := (p - thr) / 0.15
-					var grey := rng.randf_range(0.4, 1.0)
-					draw_rect(Rect2(d[0] + d[2] * k, Vector2(2, 2)), Color(grey, grey, grey, 1.0 - k))
+					var speck := Color(style.grain_color, rng.randf_range(0.4, 1.0) * (1.0 - k))
+					draw_rect(Rect2(d[0] + d[2] * k, Vector2(2, 2)), speck)
 
 ## Glyph lattice units -> screen, centred.
 func _to_screen(s: PackedVector2Array) -> PackedVector2Array:
@@ -197,14 +179,6 @@ func _to_screen(s: PackedVector2Array) -> PackedVector2Array:
 	for v in s:
 		out.append(origin + v * cell)
 	return out
-
-func _noise_frame() -> ImageTexture:
-	var bytes := PackedByteArray()
-	bytes.resize(NOISE_W * NOISE_H)
-	for i in bytes.size():
-		bytes[i] = rng.randi() & 0xff
-	var img := Image.create_from_data(NOISE_W, NOISE_H, false, Image.FORMAT_L8, bytes)
-	return ImageTexture.create_from_image(img)
 
 # --- the glyph ------------------------------------------------------------
 

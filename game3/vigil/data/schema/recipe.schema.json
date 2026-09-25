@@ -4,7 +4,7 @@
 	"title": "Vigil rite recipe",
 	"description": "One rite as the user experiences it: an engine plus its knobs and copy. Packs in data/rites/*.json are {\"pack\": name, \"recipes\": [recipe, ...]}. Params are checked against data/schema/<engine>.params.schema.json. Registry.validate() enforces the parts the app relies on.",
 	"type": "object",
-	"required": ["id", "engine", "tier", "title"],
+	"required": ["id", "engine", "tier", "title", "style"],
 	"additionalProperties": false,
 	"properties": {
 		"id": {"type": "string", "pattern": "^(free|deep)\\.[a-z_]+\\.[0-9]{3}$"},
@@ -17,6 +17,7 @@
 		"tags": {"type": "array", "items": {"type": "string"}},
 		"reviewed": {"type": "boolean", "default": false, "description": "Only reviewed recipes are drawn."},
 		"params": {"type": "object"},
+		"style": {"$ref": "style.schema.json", "description": "The rite's own look; no two recipes may share ground + stroke + font + ink."},
 		"lines": {
 			"type": "object",
 			"description": "Copy overrides by key; a string, an array (one is picked), or null to use the engine's pool.",

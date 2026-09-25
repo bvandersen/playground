@@ -11,6 +11,7 @@ const Scroll := preload("res://scripts/screens/scroll.gd")
 const FADE_TO_RITE_S := 1.5
 const FADE_IN_RITE_S := 1.5
 const FADE_HOME_S := 2.0
+const HOME_FADE := Color("#07070a")
 
 var screen: Node = null # threshold or seal
 var rite: Ritual = null
@@ -28,7 +29,7 @@ func _ready() -> void:
 	add_child(overlay)
 	fader_layer.layer = 10
 	add_child(fader_layer)
-	fader.color = Color("#07070a")
+	fader.color = HOME_FADE
 	fader.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	fader.set_anchors_preset(Control.PRESET_FULL_RECT)
 	fader_layer.add_child(fader)
@@ -74,6 +75,7 @@ func show_home() -> void:
 
 func _check_rollover() -> void:
 	if not busy and rite == null and scroll == null and Daily.today() != shown_day:
+		fader.color = Color(HOME_FADE, fader.color.a)
 		await fade(1.0, 1.0)
 		show_home()
 		fade(0.0, FADE_HOME_S)
@@ -92,6 +94,9 @@ func start_rite(recipe: Dictionary, day: String) -> void:
 		return
 	busy = true
 	rite_day = day
+	# Into (and later out of) the rite through its own colour -- white,
+	# paper, black -- the first hint of what it is.
+	fader.color = Color(Style.for_recipe(recipe).fade, fader.color.a)
 	await fade(1.0, FADE_TO_RITE_S)
 	if screen:
 		screen.queue_free()

@@ -54,11 +54,29 @@ static func draw(day: String, salt: String, history: Dictionary, pool: Array, op
 			if r != null:
 				recent_engines[r["engine"]] = true
 
-	var candidates := pool.filter(func(r): return not seen.has(r["id"]) and not recent_engines.has(r["engine"]))
-	if candidates.is_empty(): # too few engines yet for the cooldown
-		candidates = pool.filter(func(r): return not seen.has(r["id"]))
-	if candidates.is_empty():
-		candidates = pool
+	# Nor the ground or typeface of the last rite: the look must not repeat.
+	var last_style: Dictionary = {}
+	if not past.is_empty() and by_id.has(history[past[-1]].get("rite", "")):
+		last_style = by_id[history[past[-1]]["rite"]].get("style", {})
+	var new_look := func(r) -> bool:
+		var st: Dictionary = r.get("style", {})
+		return last_style.is_empty() or (st.get("ground", "void") != last_style.get("ground", "void")
+			and st.get("font", "") != last_style.get("font", ""))
+
+	# Loosened in order while nothing is left (too few engines yet for the
+	# cooldown, ...); at each level a new look is preferred.
+	var levels := [
+		func(r): return not seen.has(r["id"]) and not recent_engines.has(r["engine"]),
+		func(r): return not seen.has(r["id"]),
+		func(_r): return true,
+	]
+	var candidates := []
+	for keep in levels:
+		candidates = pool.filter(func(r): return keep.call(r) and new_look.call(r))
+		if candidates.is_empty():
+			candidates = pool.filter(keep)
+		if not candidates.is_empty():
+			break
 	candidates.sort_custom(func(a, b): return a["id"] < b["id"])
 
 	var rng := RandomNumberGenerator.new()

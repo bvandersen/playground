@@ -19,6 +19,19 @@
 				"turn_per_cycle": -0.11,
 				"hold_at_end": 12.0
 			},
+			"style": {
+				"ground": "stars",
+				"ground_colors": ["#01030b", "#0a1a30"],
+				"ink": "#a9cdf0",
+				"stroke": "hair",
+				"font": "cormorant",
+				"text_case": "lower",
+				"text_scale": 1.3,
+				"tracking": 2,
+				"grain": 0.025,
+				"grain_color": "#c8dcff",
+				"fade": "#01030b"
+			},
 			"lines": {"in": "draw", "out": "yield"}
 		},
 		{
@@ -43,8 +56,20 @@
 				"show_s": 0.8,
 				"dissolve_s": 1.2,
 				"static_s": 5.0,
-				"static": 0.65,
-				"color": "#c9d6e8"
+				"static": 0.65
+			},
+			"style": {
+				"ground": "radial",
+				"ground_colors": ["#ffffff", "#c3c6cc"],
+				"ink": "#050505",
+				"stroke": "line",
+				"weight": 1.8,
+				"font": "major_mono",
+				"text_case": "lower",
+				"tracking": 4,
+				"grain": 0.09,
+				"grain_color": "#000000",
+				"fade": "#ffffff"
 			},
 			"lines": {"look": "Do not blink.", "payoff": "You saw it for less than a second. It was there all the same."}
 		}

@@ -3,7 +3,8 @@ extends Ritual
 ## r17 The Sigil of Breath (docs/game3.md). A star polygon inside a circle
 ## breathes in asymmetric, non-human intervals chosen per day; the phase
 ## word shows faintly for the first cycles only, then never. At the end the
-## ring freezes mid-inhale and holds still before the rite closes.
+## ring freezes mid-inhale and holds still before the rite closes. How it
+## looks -- ground, ink, stroke, type -- is the recipe's style, not this file's.
 ## (The low drone arrives with Phase 1's Synth.)
 
 const ENGINE_ID := "breath_sigil"
@@ -21,7 +22,6 @@ static func defaults() -> Dictionary:
 		"turn_per_cycle": 0.0,
 		"stop_at": 0.6,
 		"hold_at_end": 6.0,
-		"color": "#d9d1bd",
 	}
 
 var rhythm: Array = []
@@ -38,8 +38,7 @@ func setup(r: Dictionary) -> void:
 	var sets: Array = params["rhythm_sets"]
 	rhythm = sets[rng.randi() % sets.size()]
 	word.modulate = Color(1, 1, 1, 0)
-	word.add_theme_font_size_override("font_size", 18)
-	word.add_theme_color_override("font_color", Color(params["color"]))
+	style.dress(word, 18)
 	word.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(word)
 
@@ -70,9 +69,9 @@ func _process(delta: float) -> void:
 		if t - frozen_at >= float(params["hold_at_end"]):
 			running = false
 			end("done")
-		return
-	_breathe(t)
-	queue_redraw()
+	else:
+		_breathe(t)
+	queue_redraw() # the ground and grain keep moving through the freeze
 
 func _breathe(time: float) -> void:
 	var cycle := int(time / cycle_length())
@@ -99,7 +98,7 @@ func _breathe(time: float) -> void:
 		a = 0.35 * sin(PI * clamp(f, 0.0, 1.0))
 	word.modulate.a = a
 	var size := viewport_size()
-	word.size = Vector2(size.x, 30)
+	word.size = Vector2(size.x, 40)
 	word.position = Vector2(0, size.y * 0.5 + max_radius() + 36)
 
 static func _ease(f: float) -> float:
@@ -111,24 +110,26 @@ func max_radius() -> float:
 
 func _draw() -> void:
 	var size := viewport_size()
+	style.draw_ground(self, size, t)
+	style.draw_grain(self, size, t)
 	var centre := size * 0.5
 	var span: Array = params["span"]
 	var r: float = max_radius() * lerp(float(span[0]), float(span[1]), breath)
-	var col := Color(params["color"])
 	var width := 2.0
 	var rings := int(params["rings"])
 	for i in rings:
-		var rr := r * (1.0 + 0.06 * i)
-		var c := col
+		var c := style.ink
 		c.a = 0.9 - 0.25 * i
-		draw_arc(centre, rr, 0.0, TAU, 160, c, width, true)
+		style.stroke(self, Style.circle(centre, r * (1.0 + 0.06 * i)), width, c)
 	var shape: Array = params["shape"]
-	draw_star(self, centre, r * 0.97, int(shape[0]), int(shape[1]), turn * TAU, col, width)
+	for s in star(centre, r * 0.97, int(shape[0]), int(shape[1]), turn * TAU):
+		style.stroke(self, s, width)
 
-## Star polygon {n/k} (a compound one when n and k share a factor).
-static func draw_star(ci: CanvasItem, centre: Vector2, radius: float, n: int, k: int, rot: float, col: Color, width: float) -> void:
+## Star polygon {n/k} as closed strokes (several when n and k share a factor).
+static func star(centre: Vector2, radius: float, n: int, k: int, rot: float) -> Array:
+	var strokes := []
 	if n < 3:
-		return
+		return strokes
 	var pts := PackedVector2Array()
 	for i in n:
 		var a := rot - PI * 0.5 + TAU * i / n
@@ -146,4 +147,5 @@ static func draw_star(ci: CanvasItem, centre: Vector2, radius: float, n: int, k:
 			if i == start:
 				stroke.append(pts[i])
 				break
-		ci.draw_polyline(stroke, col, width, true)
+		strokes.append(stroke)
+	return strokes

@@ -20,6 +20,7 @@ const ENGINES := {
 const ALWAYS_AVAILABLE := ["touch"]
 
 var recipes: Dictionary = {} # id -> recipe
+var _looks: Dictionary = {} # Style.signature -> recipe id
 var opening: Array = [] # curated recipe ids for the first days
 
 func _ready() -> void:
@@ -27,6 +28,7 @@ func _ready() -> void:
 
 func load_all() -> void:
 	recipes.clear()
+	_looks.clear()
 	var dir := DirAccess.open(RITES_DIR)
 	if dir == null:
 		push_error("Registry: no %s" % RITES_DIR)
@@ -56,6 +58,12 @@ func _load_pack(path: String) -> void:
 		if recipes.has(r["id"]):
 			push_error("Registry: duplicate recipe id %s" % r["id"])
 			continue
+		# Every rite is its own: two recipes may not look alike.
+		var look := Style.signature(r["style"])
+		if _looks.has(look):
+			push_error("Registry: %s looks the same as %s (%s)" % [r["id"], _looks[look], look])
+			continue
+		_looks[look] = r["id"]
 		recipes[r["id"]] = r
 
 ## "" when the recipe is usable; otherwise what's wrong. The full schema is
@@ -79,6 +87,11 @@ static func validate(r) -> String:
 			unknown.append(k)
 	if not unknown.is_empty():
 		return "%s: unknown params %s" % [r["id"], unknown]
+	if not r.get("style") is Dictionary:
+		return "%s: every recipe needs its own style" % r["id"]
+	var bad := Style.validate(r["style"])
+	if bad != "":
+		return "%s: %s" % [r["id"], bad]
 	return ""
 
 func get_recipe(id: String) -> Dictionary:

@@ -1,0 +1,23 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "vigil/style.schema.json",
+	"title": "Vigil rite style",
+	"description": "A rite's look (scripts/kit/style.gd). Engines draw only through it. Registry refuses two recipes whose ground + stroke + font + ink are all the same, and the daily draw avoids the previous rite's ground and font.",
+	"type": "object",
+	"additionalProperties": false,
+	"properties": {
+		"ground": {"enum": ["void", "radial", "paper", "stars", "crt"], "default": "void", "description": "void: flat. radial: centre to edge. paper: mottled stock with fibres. stars: gradient sky, slowly turning. crt: scanlines and a rolling band."},
+		"ground_colors": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 2, "description": "Html colours: centre/top, edge/bottom."},
+		"ink": {"type": "string", "description": "Html colour of lines and text."},
+		"stroke": {"enum": ["line", "glow", "brush", "hair", "pixel", "nib"], "default": "line", "description": "How a line is laid down: plain, glowing, ink brush, hairline with beads (star chart), snapped to fat pixels, broad calligraphy nib."},
+		"weight": {"type": "number", "exclusiveMinimum": 0, "default": 1, "description": "Multiplies every stroke width."},
+		"nib_angle": {"type": "number", "default": 35, "description": "Degrees; the nib stroke's pen angle."},
+		"font": {"enum": ["", "cinzel", "fell", "fraktur", "vt323", "major_mono", "cormorant"], "default": "", "description": "Typeface (fonts/); empty = Godot's default."},
+		"text_case": {"enum": ["as_is", "upper", "lower"], "default": "as_is"},
+		"text_scale": {"type": "number", "exclusiveMinimum": 0, "default": 1},
+		"tracking": {"type": "integer", "default": 0, "description": "Extra px between letters."},
+		"grain": {"type": "number", "minimum": 0, "maximum": 1, "default": 0, "description": "Resting film-grain opacity."},
+		"grain_color": {"type": "string", "default": "#ffffff"},
+		"fade": {"type": "string", "default": "#07070a", "description": "Html colour the host fades through into and out of the rite."}
+	}
+}

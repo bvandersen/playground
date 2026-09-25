@@ -192,7 +192,7 @@ is split in two:
   other ("compound rite": e.g. stillness → glyph, match → oracle), which
   multiplies variety without new code.
 - **Recipe** — data, one JSON object (~1–3 KB): `id`, `engine` (or
-  `chain`), `params`, `lines`, `title`, `tier` (`free` | `deep`),
+  `chain`), `params`, `style`, `lines`, `title`, `tier` (`free` | `deep`),
   `tags` (dawn, dusk, body, sound, …), `requires`, `weight`, `reviewed`.
   What the user experiences as "a rite" is one recipe. 2,000 recipes are
   ~5 MB and ship inside the app — no server.
@@ -200,6 +200,32 @@ is split in two:
 Variety has to be real, not reskins: a recipe must change what the user
 *does* or *feels* (rhythm, duration, sense, payoff line), not just its
 colour. The draw's 3-day engine cooldown backs this up.
+
+### Every rite has its own look
+
+(From the user: "Every ritual should feel fresh. They currently share the
+same art style etc. They should not. Each is its own. You should never
+know what you're getting.")
+
+The app's own frame — threshold, seal, scroll — keeps one quiet look so
+it reads as the door. Behind the door nothing is shared: every recipe
+carries its own `style` (`scripts/kit/style.gd`, schema
+`data/schema/style.schema.json`): **ground** (void, radial glow, paper,
+turning star field, CRT), **ink**, **stroke** — how a line is laid down
+(plain, glow, ink brush, star-chart hairline, fat pixels, broad nib) —
+**typeface** and case, grain and its colour, and the colour the host
+**fades through** into and out of the rite (black, paper, white glare),
+so the first hint of what's coming is the fade itself.
+
+- Engines never pick a colour, font or line treatment; they draw through
+  `style.stroke / dot / draw_ground / draw_grain / dress`. The same engine
+  can be ink on vellum one day and a dying terminal the next.
+- `Registry` refuses two recipes with the same ground + stroke + font +
+  ink (`Style.signature`), and the draw prefers a rite whose ground *and*
+  font both differ from the previous rite's.
+- New grounds, strokes and fonts are cheap (one branch in `style.gd`,
+  one OFL font in `fonts/`) and are how the look library keeps up with
+  the recipe count; Phase 1's shaders become more grounds / strokes.
 
 **Authoring at scale** (Phase 10): the brief's system prompt becomes the
 generator prompt. An offline, dev-only tool asks the Claude API for
@@ -269,6 +295,7 @@ game3/vigil/
       synth.gd           autoload Synth: sine, noise, drones, one-shots
       haptics.gd         pulse patterns on top of vibrate_handheld
       words.gd           Label effects: fade-in, typewriter, burn, embers
+      style.gd           class_name Style: a recipe's look (done, see Decisions)
       fx/*.gdshader      noise, dissolve, negative/thermal, fog, afterimage
     screens/
       home_sigil.gd      class_name HomeSigil: breathing sigil, tap + hidden 7 s hold
@@ -280,10 +307,10 @@ game3/vigil/
       e01_unblinking_eye.gd … e23_stone_mining.gd  (one file per engine)
   data/
     rites/               recipe packs: free_core.json, deep_001.json, …
-    schema/              recipe.schema.json + one params schema per engine
+    schema/              recipe + style schemas, one params schema per engine
     lines/               shared copy pools (JSON), keyed by engine + moment
     stones.json          Phase 5
-  fonts/                 one serif (OFL), one mono; nothing else
+  fonts/                 OFL faces, Latin-subset, one per look (+ their OFL-*.txt)
   tools/                 headless test runners (not exported)
 ```
 
@@ -306,12 +333,13 @@ A recipe (in `data/rites/*.json`):
  "title": "The Sigil of Breath", "requires": [], "weight": 1,
  "tags": ["breath", "dawn"], "reviewed": true,
  "params": {"shape": "heptagram", "rhythm": [3, 7, 2, 5], "cycles": 6},
+ "style": {"ground": "paper", "ink": "#2a1b10", "stroke": "brush", "font": "fell"},
  "lines": {"payoff": null}}
 ```
 
 Engines never touch `Save`, `Daily`, `Entitlement` or screens directly;
-they get `Senses`, `Synth`, `Haptics`, `Words` and the recipe (its
-`lines`, falling back to `Lines.pick(engine_id, key)`) only. That keeps
+they get `Senses`, `Synth`, `Haptics`, `Words`, their `style` and the
+recipe (its `lines`, falling back to `Lines.pick(engine_id, key)`) only. That keeps
 each engine one self-contained file a session can write without reading
 the others. Every engine ships with its canonical recipe (the brief's
 version, `tier: free`) plus at least 2 variant recipes that prove its
@@ -394,8 +422,9 @@ beyond updating r17 to use the kit.
   `mic_level()` (RMS dB from `AudioEffectCapture`), `touch_speed()`, and
   the desktop fallbacks from Decisions. A debug overlay (3-finger tap or
   `F1`) shows all live values.
-- Global: every screen gets the grain + vignette overlay at low opacity
-  (the "atmosphere" is mostly this and silence).
+- Grain belongs to each recipe's `style` (already there); the frame
+  screens (threshold, seal) get a faint grain + vignette of their own.
+  New shaders become new style grounds / strokes, never a shared look.
 
 ## Phase 2 — Touch-only rites (no permissions)
 
@@ -512,10 +541,11 @@ engines exist). Can run in parallel with Phases 5–9 after that.
 
 - `tools/recipes/` (Node or Python, dev-only, never exported): `gen`
   sends the brief's system prompt + tone rules + one engine's params
-  schema + 3 reviewed examples to the Claude API and asks for N new
-  recipes as JSON; `validate` checks schema, banned words, line lengths,
-  duplicate/near-duplicate params, and runs each headless via
-  `run_rite`; output goes to `data/rites/_inbox/`. API key from an env
+  schema + the style schema + 3 reviewed examples to the Claude API and
+  asks for N new recipes as JSON, each with a look of its own; `validate`
+  checks schema, banned words, line lengths, duplicate/near-duplicate
+  params and looks (ink contrast against the ground too), and runs each
+  headless via `run_rite`; output goes to `data/rites/_inbox/`. API key from an env
   var, never committed.
 - In-app **library viewer** (dev build only, opened by a dev scroll
   code): flip through inbox recipes, play any, mark keep/reject, which
@@ -523,7 +553,8 @@ engines exist). Can run in parallel with Phases 5–9 after that.
 - Target for the first paid launch: ~300 reviewed deep recipes over the
   engines that exist, plus ~20 compound chains. "Thousands" comes from
   later packs in app updates.
-- Coverage report: recipes per engine, per tag, per sensor, so the
+- Coverage report: recipes per engine, per tag, per sensor, per ground /
+  stroke / font, so the
   library doesn't drift toward whatever engine generates easiest.
 
 ## Phase 11 — Paid tier: in-app purchase, entitlement, paywall moments
@@ -824,3 +855,24 @@ stone to polish (touch speed + coverage raise its shine shader).
   tone" before the glyph waits for `Synth` (like r17's drone).
 - Autowrapped `Label`s must get their width *before* their text, or
   they size to the zero-width wrap (2000+ px tall) and can't shrink.
+
+**Every rite has its own look** (after r05; see Decisions; contact sheet
+`docs/game3/looks.jpg`; the older shots show the one shared look).
+- `scripts/kit/style.gd` (`class_name Style`); `Ritual.style` is built
+  in `setup()` from `recipe.style`, seeded by the recipe id. `line()`
+  applies the style's letter case. Engine `color` / glyph `grain` params
+  are gone — colour and grain are the style's. glyph's 6 noise frames
+  moved into `Style.draw_grain` (LA8, tinted by `grain_color`).
+- Baked grounds (radial, paper) are 160x266 images in a `CanvasTexture`
+  with linear filter; grain uses a `CanvasTexture` with nearest filter
+  (per-texture filters, so one node can draw both).
+- Fonts: Cinzel, IM Fell English italic, UnifrakturMaguntia, VT323,
+  Major Mono Display, Cormorant Garamond italic — from google/fonts,
+  subset to Latin with `pyftsubset` (~580 KB total), OFL texts beside.
+- `main.gd` fades through `Style.for_recipe(r).fade`. `Daily.draw`
+  loosens its filters level by level, preferring a new look at each.
+- `tools/screenshot.gd` now shoots every recipe (`rite-<id>.png`).
+- Current looks: breath.001 ember glow + Cinzel; breath.002 brush on
+  vellum + Fell; deep.breath star chart + Cormorant; glyph.001 green
+  CRT pixels + VT323; glyph.002 vermilion nib on bone + fraktur;
+  deep.glyph white glare, heavy black line + Major Mono.
