@@ -138,6 +138,9 @@ headless run. The Web export (4.7.2, nothreads) is published on every
 push to main at `bvandersen.github.io/playground/game3/vigil/` (not
 committed; `.github/workflows/game2-pages.yml` picks up every
 `game*/*/` with a "Web" preset automatically).
+Test links: `…/vigil/?rite=<recipe id>` (desktop: `-- --rite <id>`)
+opens that recipe at once, any tier, without sealing, like a dev code;
+`/demos/` lists one per recipe via `tools/demo_links.mjs`.
 
 ### The daily draw
 

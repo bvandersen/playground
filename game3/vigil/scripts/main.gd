@@ -41,7 +41,23 @@ func _ready() -> void:
 	add_child(tick)
 
 	show_home()
-	fade(0.0, FADE_HOME_S)
+	var test_rite := Registry.get_recipe(requested_rite())
+	if test_rite.is_empty():
+		fade(0.0, FADE_HOME_S)
+	else:
+		start_rite(test_rite, "") # like a dev code: never seals
+
+## Test links: `?rite=<recipe id>` on the Web build, `-- --rite <id>` on
+## desktop. Opens that recipe straight away, any tier, without sealing.
+static func requested_rite() -> String:
+	var args := OS.get_cmdline_user_args()
+	var i := args.find("--rite")
+	if i >= 0 and i + 1 < args.size():
+		return args[i + 1]
+	if OS.has_feature("web"):
+		var id = JavaScriptBridge.eval("new URLSearchParams(location.search).get('rite') || ''")
+		return str(id) if id != null else ""
+	return ""
 
 func show_home() -> void:
 	if screen:

@@ -14,7 +14,8 @@
 # is built with the Godot its project.godot declares (config/features
 # "4.3", "4.7", ...), resolved to that release's newest stable patch.
 # ROOT_DEMO is also published as the site root (its URL predates the
-# others); /demos/ lists them all.
+# others); /demos/ lists them all, plus any test links a demo prints
+# from its own tools/demo_links.mjs ("label<TAB>?query" per line).
 #
 # Every push to main releases: each demo is exported from its Godot
 # source here (nothreads Web templates, cached), so a commit that only
@@ -147,7 +148,17 @@ jobs:
               mkdir -p "_site/$dir"
               cp -r "static/$dir/." "_site/$dir/"
               title=$(grep -oP '^config/name="\K[^"]+' "$dir/project.godot" || echo "$dir")
-              echo "<li><a href=\"../$dir/\">$title</a> <small>$dir</small></li>"
+              echo "<li><a href=\"../$dir/\">$title</a> <small>$dir</small>"
+              # A demo may list test links (label<TAB>query per line).
+              if [ -f "$dir/tools/demo_links.mjs" ]; then
+                echo '<ul>'
+                node "$dir/tools/demo_links.mjs" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/"/\&quot;/g' |
+                  while IFS=$'\t' read -r label query; do
+                    echo "<li><a href=\"../$dir/$query\">$label</a></li>"
+                  done
+                echo '</ul>'
+              fi
+              echo "</li>"
             done < /tmp/demos.txt
             echo '</ul>'
           } > _site/demos/index.html
