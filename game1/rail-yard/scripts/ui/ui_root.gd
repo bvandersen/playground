@@ -15,6 +15,7 @@ const HINTS := {
 	"select": "Drag a train along its track. Tap a switch to flip it. Drag the ground to pan, pinch or scroll to zoom.",
 	"draw": "Drag to lay track. Start or finish on a track to join it -- joining mid-track makes a switch.",
 	"erase": "Tap a piece of track or a train to remove it.",
+	"smooth": "Rub over wobbly track to smooth it out, or tap a piece to smooth all of it.",
 	"train": "Tap a track to put a train on it.",
 	"play": "Tap a train to stop or start it. Tap a switch to flip it.",
 }
@@ -228,7 +229,7 @@ func _build_top_strip() -> void:
 	mode_button.custom_minimum_size = Vector2(62, 40)
 
 	var group := ButtonGroup.new()
-	for spec in [["select", "hand", "Select"], ["draw", "pencil", "Draw"], ["erase", "eraser", "Erase"], ["train", "train", "Add a train"]]:
+	for spec in [["select", "hand", "Select"], ["draw", "pencil", "Draw"], ["smooth", "brush", "Smooth track"], ["erase", "eraser", "Erase"], ["train", "train", "Add a train"]]:
 		var b := IconButton.new(spec[1], spec[2])
 		if spec[0] == "train":
 			b.badge = "plus"

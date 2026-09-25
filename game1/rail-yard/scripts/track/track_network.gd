@@ -266,6 +266,120 @@ func split(seg: TrackSegment, u: float) -> TrackNode:
 func toggle_switch(node: TrackNode) -> void:
 	node.switch_state += 1
 
+# --- Smoothing -------------------------------------------------------------
+#
+# Relaxing track that's already laid: every point moves towards a
+# Gaussian-weighted average of its neighbours along the piece, then a
+# second, slightly stronger negative step pushes it back out (Taubin's
+# lambda/mu pair), which irons out wiggles without the curve shrinking
+# the way plain averaging would pull a loop inwards. Both ends of every
+# piece are pinned and the lead-in next to a junction ramps in slowly,
+# so node positions and the tangent a train crosses a join on never move.
+
+# 1/LAMBDA + 1/MU ~= 0.03: bends gentler than ~a 30 px-sigma kernel's
+# reach (a 150 px-radius loop, say) pass through untouched.
+const SMOOTH_LAMBDA := 0.9
+const SMOOTH_MU := -0.925
+const SMOOTH_SIGMA := 30.0 # px of track a tap-smooth averages over
+
+## Smooths the track under a round brush at `center` by `amount` (0..1),
+## strongest in the middle of the brush. The brush is a gentle airbrush --
+## call it every frame while it's held. Returns the pieces that moved; call
+## `finish_smoothing` on them once the stroke ends.
+func smooth_brush(center: Vector2, radius: float, amount: float) -> Array:
+	var moved := []
+	var r2 := radius * radius
+	for seg in segments:
+		var w := PackedFloat32Array()
+		w.resize(seg.points.size())
+		var any := false
+		for i in range(seg.points.size()):
+			var d2: float = seg.points[i].distance_squared_to(center)
+			if d2 < r2:
+				var f := 1.0 - d2 / r2
+				w[i] = f * f
+				any = true
+		if any and _relax(seg, w, radius * 0.65, amount):
+			moved.append(seg)
+	return moved
+
+## Smooths a whole piece in one go (a tap with the Smooth tool).
+func smooth_segment(seg: TrackSegment, passes: int = 4) -> bool:
+	var w := PackedFloat32Array()
+	w.resize(seg.points.size())
+	w.fill(1.0)
+	var moved := false
+	for _k in range(passes):
+		moved = _relax(seg, w, SMOOTH_SIGMA) or moved
+	if moved:
+		finish_smoothing([seg])
+	return moved
+
+## Re-spaces the points of smoothed pieces evenly again. Kept out of the
+## per-frame brush so resampling doesn't nibble at the whole piece's shape.
+func finish_smoothing(segs: Array) -> void:
+	for seg in segs:
+		if segments.has(seg):
+			seg.set_points(_resample(seg.points, SPACING))
+
+## One lambda/mu pass over `seg`, point i moving by weight w[i] (times
+## the end pin), then only `amount` of the way there. The pass itself is
+## always full strength: tiny lambda and mu steps cancel each other out
+## and do nothing. False if nothing moved noticeably.
+func _relax(seg: TrackSegment, w: PackedFloat32Array, sigma: float, amount: float = 1.0) -> bool:
+	var n := seg.points.size()
+	if n < 5:
+		return false
+	var pin := PackedFloat32Array()
+	pin.resize(n)
+	var lead0 := _end_lead(seg.nodes[0])
+	var lead1 := _end_lead(seg.nodes[1])
+	for i in range(n):
+		var a := smoothstep(lead0 * 0.6, lead0 * 1.6, seg.cum[i]) if lead0 > 0.0 else 1.0
+		var b := smoothstep(lead1 * 0.6, lead1 * 1.6, seg.length - seg.cum[i]) if lead1 > 0.0 else 1.0
+		pin[i] = a * b * w[i]
+	pin[0] = 0.0
+	pin[n - 1] = 0.0
+	var reach := maxi(int(ceil(sigma * 2.5 / SPACING)), 1)
+	var kernel := PackedFloat32Array()
+	for k in range(reach + 1):
+		var x := k * SPACING / sigma
+		kernel.append(exp(-0.5 * x * x))
+	var pts := seg.points
+	var mid := _taubin_step(pts, pin, kernel, SMOOTH_LAMBDA)
+	var out := _taubin_step(mid, pin, kernel, SMOOTH_MU)
+	var max_move := 0.0
+	for i in range(n):
+		if amount < 1.0:
+			out[i] = pts[i].lerp(out[i], amount)
+		max_move = maxf(max_move, out[i].distance_squared_to(pts[i]))
+	if max_move < 1e-6:
+		return false
+	seg.set_points(out)
+	return true
+
+## How far in from a node the track has to keep its tangent: the lead-in
+## at a junction, nothing at a buffer stop.
+func _end_lead(node: TrackNode) -> float:
+	return LEAD if node != null and node.ports.size() > 1 else 0.0
+
+static func _taubin_step(pts: PackedVector2Array, weight: PackedFloat32Array, kernel: PackedFloat32Array, factor: float) -> PackedVector2Array:
+	var n := pts.size()
+	var out := pts.duplicate()
+	for i in range(1, n - 1):
+		if weight[i] <= 0.0:
+			continue
+		# Window kept symmetric near the ends so it doesn't drag points
+		# towards the middle of the piece.
+		var reach := mini(kernel.size() - 1, mini(i, n - 1 - i))
+		var acc := pts[i] * kernel[0]
+		var total: float = kernel[0]
+		for k in range(1, reach + 1):
+			acc += (pts[i - k] + pts[i + k]) * kernel[k]
+			total += 2.0 * kernel[k]
+		out[i] = pts[i] + (acc / total - pts[i]) * (factor * weight[i])
+	return out
+
 func _new_node(p: Vector2) -> TrackNode:
 	var n := TrackNode.new()
 	n.position = p

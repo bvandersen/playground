@@ -27,6 +27,7 @@ static func paint(ci, id: String, center: Vector2, size: float) -> void:
 		"hand": _hand(ci)
 		"pencil": _pencil(ci)
 		"eraser": _eraser(ci)
+		"brush": _brush(ci)
 		"train": _train(ci)
 		"menu": _menu(ci)
 		"undo": _undo(ci)
@@ -165,6 +166,25 @@ static func _eraser(ci) -> void:
 	var sleeve := PackedVector2Array([Vector2(-1, -4.2), Vector2(9, -4.2), Vector2(9, 4.2), Vector2(-1, 4.2)])
 	poly(ci, xf * sleeve, BLUE)
 	stroke(ci, [xf * Vector2(-1, -4.2), xf * Vector2(-1, 4.2)], WHITE, 0.8)
+
+## A paintbrush sweeping a wobbly line straight: "smooth the track".
+static func _brush(ci) -> void:
+	var wobbly := []
+	for i in range(7):
+		wobbly.append(Vector2(2.5 + i * 1.5, 20.0 + sin(i * 1.9) * 2.4))
+	stroke(ci, wobbly, WHITE.darkened(0.3), 1.6)
+	stroke(ci, [Vector2(11.5, 20), Vector2(21.5, 20)], WHITE, 1.8)
+	var d := Vector2(1, -1).normalized()
+	var n := Vector2(-d.y, d.x)
+	var tip := Vector2(9.5, 15.5)
+	var ferrule := tip + d * 5.5
+	var back := tip + d * 15.5
+	# Bristles fanning out to a rounded tip, a silver band, a red handle.
+	poly(ci, PackedVector2Array([tip - n * 1.2, tip + d * 0.6 + n * 1.8, ferrule + n * 2.2,
+		ferrule - n * 2.2, tip + d * 0.6 - n * 3.0]), BLUE)
+	poly(ci, PackedVector2Array([ferrule + n * 2.3, ferrule + d * 3.0 + n * 2.0,
+		ferrule + d * 3.0 - n * 2.0, ferrule - n * 2.3]), Color(0.75, 0.77, 0.8))
+	stroke(ci, [ferrule + d * 3.8, back], RED, 3.0)
 
 ## A little steam engine from the side: "a train".
 static func _train(ci) -> void:

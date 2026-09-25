@@ -19,11 +19,12 @@ the GitHub Pages deploy) applies here unchanged and isn't repeated.
 ## What it is
 
 - **Design mode**: a top strip with `Play`, and the tools `Select`,
-  `Draw`, `Erase`, `+Train`, plus `Menu`.
+  `Draw`, `Smooth`, `Erase`, `+Train`, plus `Menu`.
   Every button is a picture rather than a word, so a child who can't
   read yet can use it (`IconArt` in `scripts/ui/icon_art.gd` draws them
   procedurally, `IconButton` shows one; the words stay as tooltips):
-  ▶/■ play/stop, a hand (Select), a pencil (Draw), an eraser (Erase), a
+  ▶/■ play/stop, a hand (Select), a pencil (Draw), a paintbrush
+  sweeping a wobbly line straight (Smooth), an eraser (Erase), a
   steam engine with a green + (+Train), ≡ (Menu), a curly back arrow
   (Undo); in the menu four corners around a loop (Fit view), a magic
   wand (Demo layout), a bin (Clear all / delete a save), arrow-into-box /
@@ -43,6 +44,13 @@ the GitHub Pages deploy) applies here unchanged and isn't repeated.
     how switches get made. Ending back on its own start closes a loop.
     A ghost of the stroke and green rings where it will join are shown
     while drawing.
+  - **Smooth**: a brush for track that's already laid. Hold and rub
+    over wobbly track and it irons out under the ring, a little more
+    every frame it's held (an airbrush, `BRUSH_RATE`); tap a piece to
+    smooth all of it at once. Both ends of every piece stay put and the
+    lead-in beside a junction keeps its tangent, so switches and joins
+    still work; trains standing on the track are re-seated as it moves.
+    One brush stroke is one undo step.
   - **+Train**: tap a track to put down a ready-made train (one of a few
     presets: steam + tender + coaches, mixed freight, coal train, …). It
     faces the longer run of open track, and is refused if it would sit on
@@ -81,6 +89,16 @@ Same "catalog + data + view" split game2 set up, applied to trains:
   port can take (only those less than ~84° off its heading, sorted
   left-to-right so `switch_state` always means the same branch) — and
   `walk()` for looking ahead. No drawing.
+- **Smoothing** (`TrackNetwork.smooth_brush` / `smooth_segment`): each
+  point moves towards a Gaussian-weighted average of its neighbours
+  along the piece, then a slightly stronger step pushes it back out
+  (Taubin's λ/μ pair, 1/λ + 1/μ ≈ 0.03). That removes wiggles of up to
+  ~a hundred px but leaves broad curves alone, so a loop doesn't shrink
+  as plain averaging would make it. The pass is always full strength and
+  the brush blends only part of the way towards it each frame: tiny λ
+  and μ steps cancel out and do nothing. Points are re-spaced every
+  5 px once the stroke ends, not per frame, so the rest of the piece
+  isn't nibbled at.
 - **`TrackView`** draws it in layers across *all* pieces (ballast edge,
   ballast, sleepers, rails, then buffer stops and switch indicators), so
   crossings and junctions overlap like real track.

@@ -11,6 +11,7 @@ const MODE_PLAY := "play"
 const TOOL_SELECT := "select"
 const TOOL_DRAW := "draw"
 const TOOL_ERASE := "erase"
+const TOOL_SMOOTH := "smooth"
 const TOOL_TRAIN := "train"
 
 const STATE_VERSION := 1
@@ -21,6 +22,9 @@ const DRAG_START_PX := 8.0
 const MIN_ZOOM := 0.25
 const MAX_ZOOM := 3.0
 const UNDO_LIMIT := 40
+const BRUSH_PX := 56.0 # smoothing brush radius, screen px
+const BRUSH_RATE := 8.0 # how fast the brush irons track out while held, 1/s
+const BRUSH_TAP_TIME := 0.25 # s held still before a press brushes instead of tapping
 
 var mode: String = MODE_DESIGN
 var tool: String = TOOL_SELECT
@@ -50,7 +54,7 @@ var _undo: Array = []
 # Input state. Touches are tracked by index so two fingers pinch-zoom in
 # any tool; one finger does whatever the tool does.
 var _touches := {}
-var _gesture := "" # "", pending, pan, stroke, drag_train, pinch, blocked
+var _gesture := "" # "", pending, pan, stroke, smooth, drag_train, pinch, blocked
 var _down_pos := Vector2.ZERO
 var _last_pos := Vector2.ZERO
 var _mouse_left := false
@@ -58,6 +62,9 @@ var _mouse_pan := false
 var _pinch := {}
 var _stroke := PackedVector2Array()
 var _drag_car := -1
+var _brush_pos := Vector2.ZERO
+var _smoothed: Array = [] # pieces the brush has moved this stroke
+var _brush_held := 0.0 # s; a short press without moving is a tap, not brushing
 
 func _ready() -> void:
 	randomize()
@@ -98,6 +105,8 @@ func _process(delta: float) -> void:
 		else:
 			var target: Vector2 = follow_train.world[0]["center"]
 			camera.position = camera.position.lerp(target, 1.0 - exp(-4.0 * delta))
+	if _gesture == "smooth":
+		_brush_tick(delta)
 	if _autosave_countdown > 0.0:
 		_autosave_countdown = maxf(_autosave_countdown - delta, 0.001)
 		if _autosave_countdown <= 0.001:
@@ -562,6 +571,8 @@ func _update_pinch() -> void:
 func _cancel_gesture() -> void:
 	if _gesture == "stroke":
 		overlay.clear()
+	elif _gesture == "smooth":
+		_finish_brush()
 	elif _gesture == "drag_train":
 		ui.on_selection_changed(selected_train)
 		mark_dirty()
@@ -591,6 +602,14 @@ func _pointer_down(pos: Vector2) -> void:
 			overlay.snap_end = Vector2.INF
 			overlay.queue_redraw()
 			ui.dismiss_sheets_for_drag()
+		TOOL_SMOOTH:
+			_gesture = "smooth"
+			_brush_pos = w
+			_smoothed = []
+			_brush_held = 0.0
+			push_undo()
+			_show_brush()
+			ui.dismiss_sheets_for_drag()
 		TOOL_SELECT:
 			var hit := train_at(w)
 			if not hit.is_empty():
@@ -617,6 +636,11 @@ func _pointer_move(pos: Vector2) -> void:
 				overlay.stroke = _stroke
 				overlay.snap_end = net.snap_preview(w, SNAP_PX / camera.zoom.x)
 				overlay.queue_redraw()
+		"smooth":
+			_brush_pos = w
+			if pos.distance_to(_down_pos) > DRAG_START_PX:
+				_brush_held = BRUSH_TAP_TIME
+			_show_brush()
 		"drag_train":
 			if selected_train != null:
 				var before: Array = selected_train.s.duplicate()
@@ -644,6 +668,17 @@ func _pointer_up(pos: Vector2) -> void:
 				ui.on_undo_changed(_undo.size())
 				return
 			_on_tracks_changed()
+		"smooth":
+			if _brush_held < BRUSH_TAP_TIME:
+				# A tap: smooth the whole piece under it.
+				overlay.clear()
+				var hit := net.nearest(screen_to_world(pos), TAP_PX / camera.zoom.x)
+				if not hit.is_empty() and net.smooth_segment(hit["seg"]):
+					_on_tracks_changed()
+				else:
+					_drop_undo()
+				return
+			_finish_brush()
 		"drag_train":
 			if pos.distance_to(_down_pos) <= DRAG_START_PX:
 				# Just a tap on the train: selection, not an edit.
@@ -651,6 +686,44 @@ func _pointer_up(pos: Vector2) -> void:
 				ui.on_undo_changed(_undo.size())
 			ui.on_selection_changed(selected_train)
 			mark_dirty()
+
+func _drop_undo() -> void:
+	_undo.pop_back()
+	ui.on_undo_changed(_undo.size())
+
+func _show_brush() -> void:
+	overlay.brush_pos = _brush_pos
+	overlay.brush_radius = BRUSH_PX / camera.zoom.x
+	overlay.brush_line = 2.0 / camera.zoom.x
+	overlay.queue_redraw()
+
+## The smoothing brush is an airbrush: it keeps ironing out the track
+## under it for as long as it's held, a little more every frame.
+func _brush_tick(delta: float) -> void:
+	if _brush_held < BRUSH_TAP_TIME:
+		_brush_held += delta
+		return
+	var amount := 1.0 - exp(-BRUSH_RATE * delta)
+	var moved := net.smooth_brush(_brush_pos, BRUSH_PX / camera.zoom.x, amount)
+	if moved.is_empty():
+		return
+	for seg in moved:
+		if not _smoothed.has(seg):
+			_smoothed.append(seg)
+	# Keep trains sitting on the track as it moves under them.
+	for t in trains:
+		t.place(net)
+	track_view.queue_redraw()
+	trains_view.queue_redraw()
+
+func _finish_brush() -> void:
+	overlay.clear()
+	if _smoothed.is_empty():
+		_drop_undo()
+		return
+	net.finish_smoothing(_smoothed)
+	_smoothed = []
+	_on_tracks_changed()
 
 func _tap(w: Vector2) -> void:
 	if mode == MODE_PLAY:
