@@ -7,14 +7,18 @@
 # page, never the oraclecardoftheday.com custom domain, so this can
 # never affect or break the live site or its daily deploy.
 #
-# Publishes exactly one demo folder as the Pages site's root (not the
+# Publishes one game2 demo folder as the Pages site's root (not the
 # static/game2/ index) -- a demo's own asset references (index.js/.wasm/
 # .pck) are already relative, so it just works served from any path,
 # while static/game2/index.html's own links are absolute (/game2/...)
 # and would break under a github.io project-page subpath. Pick a
 # different demo by changing DEMO below.
+#
+# game1 (docs/game1.md) is exported the same way and rides along in the
+# same Pages site under game1/<demo>/ -- again fine thanks to relative
+# asset paths -- so adding it never moves the existing root URL.
 
-name: game2 Pages (large-asset demos)
+name: game1 + game2 Pages (large-asset demos)
 
 on:
   workflow_dispatch:
@@ -22,10 +26,12 @@ on:
     branches: [main]
     paths:
       - 'static/game2/bounce-melody/**'
+      - 'static/game1/**'
       - '.github/workflows/game2-pages.yml'
 
 env:
   DEMO: bounce-melody
+  GAME1_DEMOS: rail-yard
 
 permissions:
   contents: read
@@ -52,8 +58,16 @@ jobs:
           # create the Pages site itself via the API. Harmless to leave
           # set on every later run too, once it exists.
           enablement: true
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          cp -r static/game2/${DEMO}/. _site/
+          for d in ${GAME1_DEMOS}; do
+            mkdir -p _site/game1/$d
+            cp -r static/game1/$d/. _site/game1/$d/
+          done
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: static/game2/${{ env.DEMO }}
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4

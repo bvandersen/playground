@@ -17,19 +17,23 @@
 // prebuild (this repo's own build must never depend on Godot being
 // installed; see docs/game2.md).
 //
-//   node scripts/game2-postexport.mjs <demo-name>
+//   node scripts/game2-postexport.mjs <demo-name> [game-folder]
+//
+// `game-folder` defaults to game2; game1 (docs/game1.md) is exported the
+// same way and patched with `node scripts/game2-postexport.mjs rail-yard game1`.
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const demoName = process.argv[2];
-if (!demoName) {
-	console.error('Usage: node scripts/game2-postexport.mjs <demo-name>');
+const gameFolder = process.argv[3] ?? 'game2';
+if (!demoName || !/^game\d+$/.test(gameFolder)) {
+	console.error('Usage: node scripts/game2-postexport.mjs <demo-name> [game-folder]');
 	process.exit(1);
 }
 
 const indexPath = fileURLToPath(
-	new URL(`../static/game2/${demoName}/index.html`, import.meta.url)
+	new URL(`../static/${gameFolder}/${demoName}/index.html`, import.meta.url)
 );
 
 let html = readFileSync(indexPath, 'utf8');
