@@ -1,0 +1,47 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly, since the
+; parameters that go here are not all obvious.
+;
+; Hand-authored, same as bounce-melody's (no interactive Godot editor is
+; used for these projects -- see docs/game2.md) -- kept to the small set
+; of keys that matter for a headless Web export.
+
+config_version=5
+
+[application]
+
+config/name="Ragdoll Meme Maker"
+run/main_scene="res://Main.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+
+[autoload]
+
+EmojiCache="*res://scripts/media/emoji_cache.gd"
+ImageLibrary="*res://scripts/media/image_library.gd"
+TextArt="*res://scripts/media/text_art.gd"
+Recorder="*res://scripts/media/recorder.gd"
+
+[display]
+
+window/size/viewport_width=480
+window/size/viewport_height=800
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation="portrait"
+
+[input_devices]
+
+; Every finger is its own grab (two-finger puppeteering), so the world
+; reads InputEventScreenTouch/Drag only -- a mouse becomes touch index 0.
+; Touch still becomes mouse too, which is what the GUI listens to.
+pointing/emulate_touch_from_mouse=true
+
+[physics]
+
+common/physics_ticks_per_second=60
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.07, 0.07, 0.1, 1)

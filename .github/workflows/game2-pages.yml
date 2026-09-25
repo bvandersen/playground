@@ -16,7 +16,8 @@
 #
 # game1 (docs/game1.md) is exported the same way and rides along in the
 # same Pages site under game1/<demo>/ -- again fine thanks to relative
-# asset paths -- so adding it never moves the existing root URL.
+# asset paths -- so adding it never moves the existing root URL. Further
+# game2 demos (GAME2_DEMOS) ride along the same way under game2/<demo>/.
 
 name: game1 + game2 Pages (large-asset demos)
 
@@ -26,11 +27,13 @@ on:
     branches: [main]
     paths:
       - 'static/game2/bounce-melody/**'
+      - 'static/game2/ragdoll-meme/**'
       - 'static/game1/**'
       - '.github/workflows/game2-pages.yml'
 
 env:
   DEMO: bounce-melody
+  GAME2_DEMOS: ragdoll-meme
   GAME1_DEMOS: rail-yard
 
 permissions:
@@ -62,6 +65,10 @@ jobs:
         run: |
           mkdir -p _site
           cp -r static/game2/${DEMO}/. _site/
+          for d in ${GAME2_DEMOS}; do
+            mkdir -p _site/game2/$d
+            cp -r static/game2/$d/. _site/game2/$d/
+          done
           for d in ${GAME1_DEMOS}; do
             mkdir -p _site/game1/$d
             cp -r static/game1/$d/. _site/game1/$d/

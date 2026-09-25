@@ -567,6 +567,187 @@ assets to a store without Cloudflare Workers' per-asset limit (R2, fetched
 through a Worker) instead of Workers' own static-asset handling — both
 real options, neither attempted yet.
 
+## Demo 2 — "Ragdoll Meme Maker" (`game2/ragdoll-meme/`)
+
+Brief (verbatim):
+
+> Game2 user should be able to add a ragdoll and add a photo from the
+> internet as the face to it and style the entire body with photos from
+> internet or with different emojis or different styles of lines to
+> quickly and easily make their own custom person and then they can
+> record an animation of it using inverse kinematica combined with
+> procedural animation to make funny wonky animations that could easily
+> go viral because they're fun to look at Eg by adding physical forces
+> that the doll acts on or other pulls pushes wind etc. Basically users
+> can create a meme video animation in minutes that has potential to go
+> viral. We want to play into users being able to have fun creating and a
+> playground that makes it easy and quick to make novel viral trends to
+> post to some
+
+Built as a second demo in this folder rather than a mode of Bounce
+Melody: nothing is shared but the approach (and a copy of
+`ui/number_field.gd`), so each project stays self-contained and
+exportable on its own. It shows up in the generated `static/game2/`
+index automatically, and `.github/workflows/game2-pages.yml` publishes it
+at <https://bvandersen.github.io/playground/game2/ragdoll-meme/> alongside
+Bounce Melody (which stays the Pages root).
+
+Re-export after a source change:
+`godot4 --headless --path game2/ragdoll-meme --export-release "Web"`, then
+`node scripts/game2-postexport.mjs ragdoll-meme`.
+
+### What a player does
+
+1. **Build a person** (Look sheet). A doll is six styleable parts: head,
+   body, arms, legs, hands, feet. The head can be a drawn cartoon face
+   (six expressions, which scream and widen their eyes as the head flies
+   faster), any emoji, or a **photo**. The photo can come from a web
+   search (Openverse, falling back to Wikimedia Commons), a pasted link,
+   or an upload from the phone's camera roll, and it's cropped into the
+   head circle with zoom/offset. Body, arms and legs can be **lines** in
+   nine styles (noodle, solid, stick, scribble with "boiling" hand-drawn
+   jitter, dashed, spring, beads, rainbow, neon), a chain of stamped
+   **emoji** (🌭 arms, 🍌 legs...), or a **photo** mapped along the limb
+   like a sleeve. There are six one-tap presets plus 🎲 Random, a
+   "whole body" switch, head size (bobbleheads) and doll size. Up to 8
+   dolls, each styled separately.
+2. **Make it move** (Moves sheet, per doll). Stand up (balance), Dance,
+   Floss, Tube-man flail, Headbang, Wave, Walk, Jump and Spin, freely
+   combined, each with its own sliders, plus a Muscles slider from
+   floppy ragdoll to snappy puppet.
+3. **Throw physics at it.** Forces sheet: gravity strength and tilt,
+   slow-mo, rubber limbs, bounciness, floor grip, air drag, gusty wind,
+   tornado, earthquake, walls on/off. Tool row: Grab (drag any joint,
+   flick to throw, several fingers at once to puppeteer), Pin (nail a
+   joint, or drag out a rope to hang it from), Boom (explosion + camera
+   shake), Balloon (tie some on and float away), Magnet (pull or push,
+   drag to move), Erase, and Freeze (time stops and dragging poses the
+   body: pure IK).
+4. **Dress the scene** (Scene sheet). Impact-style top/bottom meme
+   caption (emoji work), gradient/colour/photo background (including a
+   green screen), floor colour, and an optional "made with" watermark.
+   🎲 "Surprise me!" randomizes every doll's look and moves plus one
+   force, which is the fastest way to something weird.
+5. **Record.** REC → 3-2-1 → it records the stage only, into a 720×1280
+   (9:16) video: mp4 where the browser can encode it (Chrome/Edge/
+   Safari), webm otherwise, for up to 60 s while the player keeps
+   dragging and blowing things up. Then a preview loops with **Share**
+   (the phone's share sheet, straight into TikTok/Reels/Shorts, where
+   supported) and **Download**.
+
+### Decisions
+
+- **Custom Verlet physics, not `RigidBody2D` + joints** (`doll/doll.gd`,
+  `world/world.gd`). The brief's "inverse kinematics" *is* position-based
+  dynamics. Pin the grabbed particle to the finger and the stick
+  constraints drag the rest of the chain after it, which is IK that also
+  swings, collides and can be thrown (velocity is just `pos - prev`).
+  Rubber limbs are one stiffness number. A physics-engine joint chain
+  fights all three and is much less predictable to tune. 12 joints,
+  3 substeps × 7 constraint iterations at 60 Hz.
+- **Procedural animation = muscles pulling toward a posed skeleton.** A
+  `Move` never touches particles; it bends the rest pose's offsets and
+  sets a few context fields (lean, crouch, spin, balance...). The doll's
+  muscles then pull every joint toward that pose, placed at the pelvis.
+  So every move combines with every other move, with every force and
+  with whatever the player is dragging, and the physics resolves the mix
+  into something wonky. Three things were needed to make that stable,
+  all found by the headless check below rather than by eye:
+  - The muscle pulls are **internal forces**: their net push is
+    subtracted again. Without that, a pose the arms can't reach (hands
+    higher than arms are long) lifted the doll by its own hands. Floss
+    and Walk flew it to the ceiling.
+  - Standing feet are **planted**: they're locked in place, and a planted
+    foot's muscle pull goes into the rest of the body as ground reaction.
+    Without that, a swaying upper body dragged its feet along the floor
+    and the doll skated across the whole stage in under a second
+    (Dance + Tube man).
+  - Only ~30% of a muscle pull becomes momentum, and the balance
+    "gyroscope" (the one deliberate cheat, which eases a doll back over
+    its feet so a ragdoll can get up at all) moves the body without adding
+    velocity. Without that, the fight between muscles and bone lengths
+    jittered dolls into hops.
+- **Catalogs, same standing rule as Bounce Melody.** Moves
+  (`moves/move_catalog.gd`), forces (`forces/force_catalog.gd`), stage
+  tools (`tools/tool_catalog.gd`), line styles (`doll/line_styles.gd`)
+  and faces (`doll/face_painter.gd`) are each one registry. Moves and
+  forces *declare* their params, and the Moves/Forces sheets build their
+  sliders from those declarations, so a new move or force is one file
+  plus one catalog line with no UI code.
+- **The browser does what Godot's Web build can't** (`media/web_bridge.gd`,
+  a JS blob installed once):
+  - Emoji are drawn by the device's own emoji font onto a canvas and
+    handed to Godot as PNGs. Godot's fonts have no emoji glyphs, and this
+    way they look like the emoji people know from their phone. Off the
+    Web, Twemoji PNGs are fetched instead.
+  - Meme captions are drawn the same way (Impact + black outline,
+    wrapped, emoji included).
+  - Photos load through an `<img crossOrigin>`: directly when the host
+    allows CORS, else through the `wsrv.nl` image proxy (a third party:
+    the image URL goes through it). The browser decodes any format it
+    can (gif, avif, heic on Safari), and the result is downsized to
+    640px and cached under `user://images/` with a manifest of where
+    each came from, so a reload gets them back.
+  - Upload uses a real `<input type=file>`.
+  - Recording draws the stage's rectangle of the Godot canvas into a
+    720×1280 canvas every animation frame and feeds that canvas's
+    `captureStream()` to `MediaRecorder`. That only works because the
+    export's `html/head_include` patches `getContext` to force WebGL's
+    `preserveDrawingBuffer` on (otherwise the canvas reads back blank
+    outside Godot's own frame callback).
+- **Portrait 9:16 stage in fixed 720×1280 units.** Physics behaves the
+  same on every screen, and a recording is always a clean phone-video
+  frame. Main scales it to fit between the top strip and the tool row.
+  While a sheet is open the stage shrinks to fit above it, so the doll
+  being styled stays visible. All chrome is outside the stage rectangle
+  (hints are suppressed while recording), so none of it can end up in a
+  video.
+- **Auto-save** of the design (looks, moves, forces, scene) to
+  `user://scene.json`, 1 s after the last edit. Positions and props
+  aren't saved; a reload stands everyone back up.
+
+### Verification
+
+- `tools/sim_check.tscn` (`godot4 --headless --path game2/ragdoll-meme
+  res://tools/sim_check.tscn`, excluded from the export) steps a World
+  with no window and prints what matters: stands, falls over with
+  balance off and gets back up with it on, a dragged hand reaches exactly
+  the finger and the body hangs from it, every move and every force runs
+  with all positions finite, and each move's drift over 5 s. Final
+  numbers: headbang/wave ≤ 7 px, dance/floss/flail sway up to ~100 px
+  and end near where they started. The triple combo Dance+Headbang+Floss
+  wanders ~240 px in 5 s, which is left as wonky on purpose. Also
+  checked: 4 balloons lift a doll, and the save/load round-trip is
+  identical.
+- The exported build was checked in headless Chromium (Playwright) at
+  390×844, at DPR 1 and 2 and with real touch events, plus 1280×800:
+  - dragging a joint;
+  - **two fingers dragging both hands at once**;
+  - tapping GUI buttons by touch;
+  - every sheet, all presets, Random and three dolls;
+  - a photo face from a pasted link, zoomed;
+  - balloons lifting a doll, a rope pin, a magnet, Boom;
+  - Surprise me + caption;
+  - REC → a 720×1280 mp4 (~0.6 MB for ~5 s) whose decoded frames show
+    exactly the stage: no top strip, tool row, hint or countdown digit.
+    The last "1" of the countdown was leaking into the first frames
+    before capture start was delayed two frames.
+- **Not verified here (honestly open):**
+  - Photo *search* and the wsrv.nl proxy: this sandbox's network policy
+    blocks api.openverse.org, commons.wikimedia.org and wsrv.nl. Search
+    was only checked to fail gracefully ("can't be reached — paste a
+    link or upload"). Openverse's CORS headers in particular are
+    unconfirmed; Wikimedia with `origin=*` is the documented-CORS
+    fallback.
+  - The Share button (headless Chromium has no share sheet) and the
+    device photo picker (needs a real file dialog).
+  - iOS Safari: its transient-user-activation rules for the file picker
+    are stricter than Chrome's.
+  - The video has **no audio**. Godot's audio graph isn't reachable from
+    the page, and the tip in the preview says to add a trending sound
+    when posting, which is how these clips usually get their sound
+    anyway.
+
 ## Git workflow for this folder
 
 Same hard gate as the rest of this repo (`CLAUDE.md`): confirm
