@@ -75,7 +75,7 @@ func _generate() -> void:
 ## Re-scatters scenery, keeping clear of every track point. The survivors
 ## are merged into one mesh per CHUNK-sized square and kind, so a frame
 ## draws only the few chunks on screen, each in a single draw call.
-func rebuild(net: TrackNetwork) -> void:
+func rebuild(net: TrackNetwork, clear_of: PackedVector2Array = PackedVector2Array()) -> void:
 	var blocked := {}
 	var reach := int(ceil((TRACK_CLEARANCE + 14.0) / CELL))
 	for seg in net.segments:
@@ -86,6 +86,13 @@ func rebuild(net: TrackNetwork) -> void:
 			for dy in range(-reach, reach + 1):
 				for dx in range(-reach, reach + 1):
 					blocked[Vector2i(cx + dx, cy + dy)] = true
+	# Stations: their platforms and houses (a point every 15 px or so).
+	for p in clear_of:
+		var cx := floori(p.x / CELL)
+		var cy := floori(p.y / CELL)
+		for dy in range(-reach, reach + 1):
+			for dx in range(-reach, reach + 1):
+				blocked[Vector2i(cx + dx, cy + dy)] = true
 	var kept := _items.filter(func(it): return not blocked.has(Vector2i(floori(it[1].x / CELL), floori(it[1].y / CELL))))
 	# Same (unstable) sort as ever, so overlapping pieces stack as before.
 	kept.sort_custom(func(p, q): return p[0] < q[0])

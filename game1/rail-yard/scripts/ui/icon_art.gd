@@ -45,6 +45,7 @@ static func paint(ci, id: String, center: Vector2, size: float) -> void:
 		"check": _check(ci)
 		"pause": _pause(ci)
 		"sound": _sound(ci)
+		"station": _station(ci)
 	ci.draw_set_transform(Vector2.ZERO, 0.0)
 
 ## A small round badge ("plus" / "cross") in the top-right corner of a
@@ -297,3 +298,15 @@ static func _sound(ci) -> void:
 	poly(ci, PackedVector2Array([Vector2(3, 9), Vector2(7.5, 9), Vector2(13, 4), Vector2(13, 20), Vector2(7.5, 15), Vector2(3, 15)]), WHITE)
 	stroke(ci, arc_pts(Vector2(13, 12), 4.5, -PI * 0.3, PI * 0.3, 8), YELLOW, 2.0)
 	stroke(ci, arc_pts(Vector2(13, 12), 8.5, -PI * 0.3, PI * 0.3, 10), YELLOW, 2.0)
+
+## A little station house on a platform, someone waiting beside it:
+## "build a station".
+static func _station(ci) -> void:
+	rrect(ci, Rect2(1.5, 18, 21, 3.2), 0.8, WHITE.darkened(0.35))
+	stroke(ci, [Vector2(2.5, 18.6), Vector2(21.5, 18.6)], YELLOW, 0.9)
+	rrect(ci, Rect2(3.5, 9.5, 11, 8.5), 0.6, Color(0.96, 0.88, 0.7))
+	poly(ci, PackedVector2Array([Vector2(1.8, 10.4), Vector2(9, 3.6), Vector2(16.2, 10.4)]), RED)
+	rrect(ci, Rect2(7.5, 12.6, 3.2, 5.4), 0.5, Color(0.5, 0.3, 0.16))
+	disc(ci, Vector2(9.1, 8.2), 1.3, WHITE)
+	disc(ci, Vector2(19.2, 10.6), 1.7, SKIN)
+	rrect(ci, Rect2(17.3, 12.6, 3.8, 5.4), 1.2, BLUE)

@@ -14,10 +14,11 @@ const SAVE_LIST_MAX_HEIGHT := 160.0
 const HINTS := {
 	"select": "Drag a train along its track. Tap a switch to flip it. Drag the ground to pan, pinch or scroll to zoom.",
 	"draw": "Drag to lay track. Start or finish on a track to join it -- joining mid-track makes a switch.",
-	"erase": "Tap a piece of track or a train to remove it.",
+	"erase": "Tap a piece of track, a train or a station to remove it.",
 	"smooth": "Rub over wobbly track to smooth it out, or tap a piece to smooth all of it.",
 	"train": "Tap a track to put a train on it.",
-	"play": "Tap a train to stop or start it. Tap a switch to flip it.",
+	"station": "Tap beside a track to build a station there. Trains with coaches stop to let people off and on.",
+	"play": "Tap a train to stop or start it. Tap a switch to flip it. Trains with coaches stop at stations.",
 }
 
 var main: Node
@@ -260,9 +261,9 @@ func _build_top_strip() -> void:
 	mode_button.custom_minimum_size = Vector2(62, 40)
 
 	var group := ButtonGroup.new()
-	for spec in [["select", "hand", "Select"], ["draw", "pencil", "Draw"], ["smooth", "brush", "Smooth track"], ["erase", "eraser", "Erase"], ["train", "train", "Add a train"]]:
+	for spec in [["select", "hand", "Select"], ["draw", "pencil", "Draw"], ["smooth", "brush", "Smooth track"], ["erase", "eraser", "Erase"], ["train", "train", "Add a train"], ["station", "station", "Build a station"]]:
 		var b := IconButton.new(spec[1], spec[2])
-		if spec[0] == "train":
+		if spec[0] == "train" or spec[0] == "station":
 			b.badge = "plus"
 		b.toggle_mode = true
 		b.button_group = group

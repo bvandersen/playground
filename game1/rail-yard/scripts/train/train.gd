@@ -41,6 +41,8 @@ const BOGIE := 0.33 # bogie offset from car centre, fraction of car length
 const JOINT := 42.0 # rail joint spacing, px
 const SWAY_GAIN := 0.02
 const MAX_SPEED := 240.0
+const STATION_LOOK := 520.0 # how far ahead a train with seats looks for stations
+const STATION_STEP := 10.0
 
 # --- Saved description -----------------------------------------------------
 var anchor := Vector2.ZERO # centre of the lead loco (car 0)
@@ -72,6 +74,14 @@ var _joint_r: Array = []
 var _emit: Array = []
 var _braking := false # squealed for this stop already
 
+## Passengers riding in each car: [{look, rides}] per car (see Station).
+var riders: Array = []
+var dwelling_at: Station = null # standing at this station, letting people on and off
+var _dwell_time := 0.0
+var _stop_station: Station = null # braking to stop here
+var _stop_s := 0.0 # where the front will be when it's stopped there
+var _served: Station = null # just left; ignored until the train is clear of it
+
 func car_len(i: int) -> float:
 	return float(WagonCatalog.entry(cars[i]["type"])["length"])
 
@@ -89,6 +99,21 @@ func has_power() -> bool:
 		if is_powered(i):
 			return true
 	return false
+
+func car_seats(i: int) -> int:
+	return int(WagonCatalog.entry(cars[i]["type"]).get("seats", 0))
+
+func has_seats() -> bool:
+	for i in range(cars.size()):
+		if car_seats(i) > 0:
+			return true
+	return false
+
+func rider_count() -> int:
+	var n := 0
+	for r in riders:
+		n += r.size()
+	return n
 
 func is_placed() -> bool:
 	return route != null and s.size() == cars.size() and not cars.is_empty()
@@ -132,9 +157,23 @@ func place(net: TrackNetwork) -> bool:
 			return false
 	route.trim(_rear_end() - 60.0, _front_end() + 60.0)
 	_reset_visual()
+	_reset_riders()
 	update_world()
 	_sync_anchor()
 	return true
+
+## One rider list per car. A car with seats starts out with a few people
+## already aboard, so the first station has someone to get off.
+func _reset_riders() -> void:
+	dwelling_at = null
+	_stop_station = null
+	_served = null
+	var had := riders.size()
+	riders.resize(cars.size())
+	for i in range(had, cars.size()):
+		riders[i] = []
+		for _k in range(randi_range(1, 4) if car_seats(i) > 0 else 0):
+			riders[i].append({"look": PersonArt.random_look(), "rides": randi_range(1, 2)})
 
 ## Slides the whole train along its track so car `idx` is as close to
 ## `p` as it can get -- what dragging a train in Design mode does.
@@ -227,7 +266,7 @@ static func _zeros(n: int) -> Array:
 ## Decides this frame's target speed by looking down the track ahead:
 ## slows to stop short of a buffer stop or another train, and after
 ## waiting stopped for a moment, reverses (shunting back and forth).
-func plan(delta: float, net: TrackNetwork, trains: Array) -> float:
+func plan(delta: float, net: TrackNetwork, trains: Array, stations: Array = []) -> float:
 	if not is_placed():
 		return 0.0
 	route.ensure(_rear_end() - 16.0, _front_end() + 16.0)
@@ -236,6 +275,18 @@ func plan(delta: float, net: TrackNetwork, trains: Array) -> float:
 		limited = false
 		_block_timer = 0.0
 		return 0.0
+	if dwelling_at != null:
+		limited = false
+		_block_timer = 0.0
+		if not stations.has(dwelling_at) or not dwelling_at.valid:
+			dwelling_at = null
+		else:
+			_dwell_time += delta
+			if not dwelling_at.serve(self, _dwell_time):
+				return 0.0
+			_served = dwelling_at
+			dwelling_at = null
+			sound_horn()
 	var lead := 0 if direction > 0 else cars.size() - 1
 	var front_s: float = s[lead] + direction * car_len(lead) * 0.5
 	var cur := route.cursor(front_s, direction > 0)
@@ -254,8 +305,17 @@ func plan(delta: float, net: TrackNetwork, trains: Array) -> float:
 	var target := speed
 	if free < INF:
 		target = minf(target, sqrt(2.0 * A_SOFT * maxf(free, 0.0)))
+	if not stations.is_empty() and has_seats():
+		target = minf(target, _station_limit(net, stations, cur, front_s))
+		if dwelling_at != null:
+			return 0.0
 	limited = target < speed - 0.5
 	if limited and target < 2.0 and absf(_avg_v()) < 3.0:
+		# Pulled up at a buffer stop by a platform (a terminus): that's a
+		# station stop too, before it backs out again.
+		if _stop_station != null and _stop_station.alongside(self):
+			_arrive(_stop_station)
+			return 0.0
 		if _block_timer == 0.0:
 			# Nose to nose, both trains would otherwise back off at the same
 			# instant and meet again; a random wait lets one go first.
@@ -275,6 +335,57 @@ func plan(delta: float, net: TrackNetwork, trains: Array) -> float:
 	elif _braking and moving < 5.0:
 		_braking = false
 	return target
+
+## Target speed for stopping at the next station ahead with the seated
+## cars centred on its platform (INF if there's none to stop at).
+func _station_limit(net: TrackNetwork, stations: Array, cur: Array, front_s: float) -> float:
+	if _served != null and (not stations.has(_served) or not _served.alongside(self)):
+		_served = null
+	if _stop_station != null and (not stations.has(_stop_station) or not _stop_station.valid):
+		_stop_station = null
+	if _stop_station == null:
+		var pts: PackedVector2Array = net.walk(cur[0], cur[1], cur[2], STATION_LOOK, STATION_STEP)["points"]
+		var best := INF
+		for st in stations:
+			if st == _served or not st.valid:
+				continue
+			for k in range(pts.size()):
+				if pts[k].distance_squared_to(st.anchor) < 64.0:
+					if k * STATION_STEP < best:
+						best = k * STATION_STEP
+						_stop_station = st
+					break
+		if _stop_station == null:
+			return INF
+		_stop_s = front_s + direction * (best + _seat_offset(front_s))
+	var remaining := (_stop_s - front_s) * direction
+	if remaining < -30.0:
+		_stop_station = null
+		return INF
+	if remaining < 4.0 and absf(_avg_v()) < 3.0:
+		if _stop_station.alongside(self):
+			_arrive(_stop_station)
+		else:
+			_stop_station = null # a switch sent us elsewhere
+		return 0.0
+	return sqrt(2.0 * A_SOFT * maxf(remaining, 0.0))
+
+## How far behind the front the middle of the seated cars is.
+func _seat_offset(front_s: float) -> float:
+	var lo := INF
+	var hi := -INF
+	for i in range(cars.size()):
+		if car_seats(i) > 0:
+			lo = minf(lo, s[i])
+			hi = maxf(hi, s[i])
+	return (front_s - (lo + hi) * 0.5) * direction
+
+func _arrive(st: Station) -> void:
+	dwelling_at = st
+	_dwell_time = 0.0
+	_stop_station = null
+	_block_timer = 0.0
+	limited = false
 
 ## The lead loco's horn or whistle (the catalog's `horn`), if it has one.
 func sound_horn() -> void:

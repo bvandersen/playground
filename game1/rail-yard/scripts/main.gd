@@ -13,6 +13,7 @@ const TOOL_DRAW := "draw"
 const TOOL_ERASE := "erase"
 const TOOL_SMOOTH := "smooth"
 const TOOL_TRAIN := "train"
+const TOOL_STATION := "station"
 
 const STATE_VERSION := 1
 const AUTOSAVE_DELAY := 0.8
@@ -30,6 +31,7 @@ var mode: String = MODE_DESIGN
 var tool: String = TOOL_SELECT
 var net := TrackNetwork.new()
 var trains: Array = []
+var stations: Array = []
 var selected_train: Train = null
 ## Camera follows this train while it's set; any manual pan/zoom lets go.
 var follow_train: Train = null
@@ -37,6 +39,8 @@ var follow_train: Train = null
 var camera: Camera2D
 var ground: Ground
 var track_view: TrackView
+var stations_view: StationsView
+var people_view: PeopleView
 var trains_view: TrainsView
 var smoke: Smoke
 var overlay: DrawOverlay
@@ -76,6 +80,12 @@ func _ready() -> void:
 	track_view = TrackView.new()
 	track_view.net = net
 	add_child(track_view)
+	stations_view = StationsView.new()
+	stations_view.main = self
+	add_child(stations_view)
+	people_view = PeopleView.new()
+	people_view.main = self
+	add_child(people_view)
 	trains_view = TrainsView.new()
 	trains_view.main = self
 	add_child(trains_view)
@@ -125,6 +135,10 @@ func _process(delta: float) -> void:
 			camera.position = camera.position.lerp(target, 1.0 - exp(-4.0 * delta))
 	if _gesture == "smooth":
 		_brush_tick(delta)
+	for st in stations:
+		st.update(delta, mode == MODE_PLAY)
+	if not stations.is_empty():
+		people_view.queue_redraw()
 	if _autosave_countdown > 0.0:
 		_autosave_countdown = maxf(_autosave_countdown - delta, 0.001)
 		if _autosave_countdown <= 0.001:
@@ -135,7 +149,7 @@ func _physics_process(delta: float) -> void:
 		return
 	var targets := []
 	for t in trains:
-		targets.append(t.plan(delta, net, trains))
+		targets.append(t.plan(delta, net, trains, stations))
 	for i in range(trains.size()):
 		trains[i].simulate(delta, targets[i])
 	for t in trains:
@@ -186,11 +200,19 @@ func capture_state() -> Dictionary:
 		"version": STATE_VERSION,
 		"tracks": net.to_dict(),
 		"trains": trains.map(func(t): return t.to_dict()),
+		"stations": stations.map(func(st): return st.to_dict()),
 	}
 
 func apply_state(state: Dictionary) -> void:
 	_cancel_gesture()
 	net.from_dict(state.get("tracks", {}))
+	stations.clear()
+	for sd in state.get("stations", []):
+		if sd is Dictionary:
+			var st := Station.from_dict(sd)
+			if st.resolve(net):
+				st.populate()
+				stations.append(st)
 	trains.clear()
 	selected_train = null
 	for td in state.get("trains", []):
@@ -203,7 +225,12 @@ func apply_state(state: Dictionary) -> void:
 
 func _redraw_world() -> void:
 	track_view.queue_redraw()
-	ground.rebuild(net)
+	stations_view.queue_redraw()
+	people_view.queue_redraw()
+	var clear_of := PackedVector2Array()
+	for st in stations:
+		clear_of.append_array(st.footprint())
+	ground.rebuild(net, clear_of)
 	trains_view.queue_redraw()
 
 func push_undo() -> void:
@@ -319,6 +346,15 @@ func load_demo() -> void:
 	net.add_stroke(rot * _smooth_path([Vector2(-170, r), Vector2(-110, r - 22), Vector2(-60, r - 60),
 		Vector2(-30, r - 110), Vector2(-20, r - 160)]), 20.0)
 
+	# A station on each long side: outside the oval at the bottom, inside it
+	# at the top (the passing loop is outside there).
+	stations.clear()
+	for at in [[Vector2(-70, r), Vector2(-70, r + 40)], [Vector2(40, -r), Vector2(40, -r + 40)]]:
+		var st := Station.make(rot * (at[0] as Vector2), rot.basis_xform((at[1] as Vector2) - (at[0] as Vector2)).normalized())
+		if st.resolve(net):
+			st.populate()
+			stations.append(st)
+
 	trains.clear()
 	selected_train = null
 	var specs := [
@@ -358,6 +394,7 @@ func clear_all() -> void:
 	push_undo()
 	net.clear()
 	trains.clear()
+	stations.clear()
 	select_train(null)
 	_redraw_world()
 	mark_dirty()
@@ -448,6 +485,8 @@ func remove_car(t: Train, index: int) -> void:
 		return
 	push_undo()
 	t.cars.remove_at(index)
+	if index < t.riders.size():
+		t.riders.remove_at(index)
 	relay_train(t)
 
 func turn_train(t: Train) -> void:
@@ -463,6 +502,57 @@ func set_livery(t: Train, c: Color) -> void:
 	trains_view.queue_redraw()
 	mark_dirty()
 
+# --- Stations ------------------------------------------------------------
+
+## Builds a station beside the track nearest `p`, its platform on the side
+## of the track `p` is on.
+func place_station_at(p: Vector2) -> void:
+	var hit := net.nearest(p, maxf(Station.INNER + Station.WIDTH + 10.0, TAP_PX * 2.0 / camera.zoom.x))
+	if hit.is_empty():
+		ui.show_message("Tap next to a track to build a station there.")
+		return
+	var seg: TrackSegment = hit["seg"]
+	var towards: Vector2 = p - hit["pos"]
+	if towards.length() < 2.0:
+		towards = seg.tangent_at(hit["u"]).orthogonal()
+	var st := Station.make(hit["pos"], towards.normalized())
+	if not st.resolve(net):
+		ui.show_message("There isn't enough track there for a platform.")
+		return
+	if _station_blocked(st):
+		ui.show_message("No room for a platform there -- try the other side of the track.")
+		return
+	push_undo()
+	st.populate()
+	stations.append(st)
+	Sfx.play_at("track", st.anchor)
+	_redraw_world()
+	mark_dirty()
+
+## True if `st`'s platform or house would sit on other track or another
+## station.
+func _station_blocked(st: Station) -> bool:
+	for q in st.footprint():
+		if not net.nearest(q, 24.0).is_empty():
+			return true
+		for o in stations:
+			if o.contains(q, 6.0):
+				return true
+	return false
+
+func station_at(p: Vector2) -> Station:
+	for i in range(stations.size() - 1, -1, -1):
+		if stations[i].contains(p, 4.0 / camera.zoom.x):
+			return stations[i]
+	return null
+
+func remove_station(st: Station) -> void:
+	push_undo()
+	stations.erase(st)
+	Sfx.play_at("erase", st.anchor)
+	_redraw_world()
+	mark_dirty()
+
 # --- Tracks --------------------------------------------------------------
 
 func _on_tracks_changed() -> void:
@@ -473,8 +563,15 @@ func _on_tracks_changed() -> void:
 			lost += 1
 			if selected_train == t:
 				select_train(null)
+	var lost_st := 0
+	for st in stations.duplicate():
+		if not st.resolve(net):
+			stations.erase(st)
+			lost_st += 1
 	if lost > 0:
 		ui.show_message("Removed %d train%s left without track." % [lost, "" if lost == 1 else "s"])
+	elif lost_st > 0:
+		ui.show_message("Removed %d station%s left without track." % [lost_st, "" if lost_st == 1 else "s"])
 	_redraw_world()
 	mark_dirty()
 
@@ -741,9 +838,12 @@ func _brush_tick(delta: float) -> void:
 	for seg in moved:
 		if not _smoothed.has(seg):
 			_smoothed.append(seg)
-	# Keep trains sitting on the track as it moves under them.
+	# Keep trains and platforms sitting on the track as it moves under them.
 	for t in trains:
 		t.place(net)
+	for st in stations:
+		st.resolve(net)
+	stations_view.queue_redraw()
 	track_view.queue_redraw()
 	trains_view.queue_redraw()
 
@@ -776,6 +876,10 @@ func _tap(w: Vector2) -> void:
 			if not hit.is_empty():
 				remove_train(hit[0])
 				return
+			var st := station_at(w)
+			if st != null:
+				remove_station(st)
+				return
 			var seg_hit := net.nearest(w, TAP_PX / camera.zoom.x)
 			if seg_hit.is_empty():
 				return
@@ -785,5 +889,7 @@ func _tap(w: Vector2) -> void:
 			_on_tracks_changed()
 		TOOL_TRAIN:
 			place_train_at(w)
+		TOOL_STATION:
+			place_station_at(w)
 		TOOL_DRAW:
 			toggle_switch_near(w)

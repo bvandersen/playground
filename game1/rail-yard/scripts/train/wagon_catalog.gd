@@ -10,7 +10,9 @@ extends Node
 ## `stack_x` where on the car (px ahead of its center) it comes out.
 ## `livery` cars take the train's livery colour; the rest keep their own.
 ## `horn` is the Sfx a loco sounds when it sets off (see Sfx), and
-## `chuff` locos make a chuff with every exhaust puff.
+## `chuff` locos make a chuff with every exhaust puff. `seats` is how
+## many passengers a car carries; a train with any seats stops at
+## stations (see Station).
 
 var art := WagonArt.new()
 
@@ -33,7 +35,7 @@ var CATALOG := {
 		"paint": art.tender,
 	},
 	"coach": {
-		"name": "Coach", "length": 72.0, "width": 18.0, "mass": 2.0, "livery": true,
+		"name": "Coach", "length": 72.0, "width": 18.0, "mass": 2.0, "livery": true, "seats": 10,
 		"colors": [Color(0.12, 0.36, 0.2), Color(0.5, 0.1, 0.1), Color(0.16, 0.34, 0.62)],
 		"paint": art.coach,
 	},
@@ -76,6 +78,8 @@ const PRESETS := [
 	["diesel", "diesel", "hopper", "hopper", "hopper", "hopper", "hopper"],
 	["steam", "tender", "boxcar", "logs", "logs", "tanker", "caboose"],
 	["diesel", "container", "container", "container", "container"],
+	["diesel", "coach", "coach", "coach"],
+	["steam", "tender", "coach", "coach"],
 ]
 
 const LIVERIES := [
