@@ -44,6 +44,7 @@ static func paint(ci, id: String, center: Vector2, size: float) -> void:
 		"eye": _eye(ci)
 		"check": _check(ci)
 		"pause": _pause(ci)
+		"sound": _sound(ci)
 	ci.draw_set_transform(Vector2.ZERO, 0.0)
 
 ## A small round badge ("plus" / "cross") in the top-right corner of a
@@ -290,3 +291,9 @@ static func _eye(ci) -> void:
 
 static func _check(ci) -> void:
 	stroke(ci, [Vector2(4, 12.5), Vector2(9.5, 18), Vector2(20, 6)], GREEN, 3.6)
+
+## A loudspeaker with sound waves: "sounds on/off".
+static func _sound(ci) -> void:
+	poly(ci, PackedVector2Array([Vector2(3, 9), Vector2(7.5, 9), Vector2(13, 4), Vector2(13, 20), Vector2(7.5, 15), Vector2(3, 15)]), WHITE)
+	stroke(ci, arc_pts(Vector2(13, 12), 4.5, -PI * 0.3, PI * 0.3, 8), YELLOW, 2.0)
+	stroke(ci, arc_pts(Vector2(13, 12), 8.5, -PI * 0.3, PI * 0.3, 10), YELLOW, 2.0)

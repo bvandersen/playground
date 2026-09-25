@@ -29,7 +29,8 @@ the GitHub Pages deploy) applies here unchanged and isn't repeated.
   (Undo); in the menu four corners around a loop (Fit view), a magic
   wand (Demo layout), a bin (Clear all / delete a save), arrow-into-box /
   arrow-out-of-box (Save / Load), circling arrows (auto-save on/off) and
-  rewind (reset trains on stop on/off); in the train sheet an arrow
+  rewind (reset trains on stop on/off), a loudspeaker (sounds on/off);
+  in the train sheet an arrow
   (which way it sets off), a U-turn (Turn around), ▶/⏸ (Runs), an eye
   (Follow), a bin (Delete) and a tick (Done). The consist and the
   "add a wagon" buttons are little wagons painted by `WagonArt` itself,
@@ -171,6 +172,56 @@ it's layered on purpose:
    thickening with throttle. Puffs are clusters of blobs that drift with
    the wind plus some of the loco's velocity, swell and fade.
 7. Headlight cones ahead of the lead loco in Play.
+
+## Sound
+
+Ten short sound effects, made with ElevenLabs' text-to-sound model
+(`eleven_text_to_sound_v2`, through the ElevenLabs MCP connector, flow
+"Rail Yard sound effects"). No sound is synthesised in the game. Each clip
+was decoded, cut to the one event that was wanted, trimmed of silence, given
+a 3 ms fade in and a 40 ms fade out, normalised to -1 dBFS and saved as
+22.05 kHz mono 16-bit WAV in `game1/rail-yard/sounds/` (248 KB in total,
++245 KB on the Web `.pck`).
+
+| File | Prompt | Plays when |
+|---|---|---|
+| `whistle` | Short cheerful steam locomotive whistle, single bright toot, about one second, outdoors | a steam loco sets off: entering Play, tapped back to running, reversing after it's blocked |
+| `horn` | Short diesel locomotive air horn, two-tone chord, one quick blast, outdoors | the same, for diesels |
+| `chuff` | One sharp steam engine chuff, punchy burst of exhaust steam from a chimney, quick attack and fast decay | with every steam puff while moving, louder under load |
+| `clack` | Single train wheel clack over a rail joint, two quick metallic clicks, isolated (first click only) | the lead and last car's bogies crossing a rail joint (every 42 px), louder and higher the faster the train goes |
+| `brake` | Train brakes squealing briefly as it slows to a stop, metallic squeal ending with air brake hiss | once, when a train moving faster than 45 px/s brakes towards a stop |
+| `switch` | Railway switch lever thrown, heavy metallic clunk and short steel slide, isolated | a switch is flipped |
+| `couple` | Railway wagon couplers locking together, single heavy metal clank, isolated | a train is put down, or a car is coupled, uncoupled or turned |
+| `track` | Toy wooden train track piece clicked into place, satisfying soft knock with a little gravel crunch (second knock only) | a drawn stroke becomes track |
+| `erase` | Quick soft cartoon swoosh with a gentle pop, playful removal sound | track or a train is erased |
+| `tap` | Single crisp wooden block click, short bright UI tap, close-mic | any icon button is pressed |
+
+Two of the first takes were replaced: the first `tap` came out silent
+(peak 0.003), and the first `chuff` was a 2 s swelling hiss, not a single
+puff.
+
+`Sfx` (`scripts/audio/sfx.gd`, autoload) owns playback. UI sounds are
+plain `AudioStreamPlayer`s. Everything on the layout goes through a pool
+of 20 `AudioStreamPlayer2D`s, so it pans with its position on screen.
+Their hearing range is scaled by the camera zoom so that what's on screen
+is audible and what's far off screen fades out. Each sound has a minimum
+gap between starts and a cap on how many copies may play at once. Two
+trains produce about 20 chuffs and clacks a second, so without the caps
+they would pile up; anything over a cap is dropped. At first every bogie
+clacked, which was about 50 a second and sounded like a buzz, so only the
+end cars' bogies clack now. Which loco has which horn, and which ones
+chuff, is in `WagonCatalog` (`horn`, `chuff`), as the standing rule
+requires. The menu's loudspeaker switch is saved in `settings.json` as
+`sound`.
+
+Verified: headless runs of the demo layout. Play starts the whistle and
+horn, chuffs and clacks play while moving, flipping every switch sends a
+train into a buffer and it squeals once and whistles when it reverses,
+and train speeds are unchanged (105 / 80 px/s). The exported build runs in
+headless Chromium with no console errors and shows the new menu toggle.
+**Not verified by ear here**: the container has no audio output, so the
+mix levels (`SOUNDS` in `sfx.gd`) were set from the clips' measured
+loudness and may need adjusting on a real device.
 
 ## Build & export
 

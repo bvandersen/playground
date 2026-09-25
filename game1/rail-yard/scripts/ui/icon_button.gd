@@ -16,6 +16,7 @@ func _init(id: String = "", tip: String = "", min_size: Vector2 = Vector2(50, 40
 	icon_id = id
 	tooltip_text = tip
 	custom_minimum_size = min_size
+	pressed.connect(func(): Sfx.play("tap", 0.0, randf_range(0.95, 1.05)))
 
 func set_icon(id: String) -> void:
 	if id != icon_id:

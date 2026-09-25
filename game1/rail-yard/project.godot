@@ -21,6 +21,7 @@ config/quit_on_go_back=false
 [autoload]
 
 WagonCatalog="*res://scripts/train/wagon_catalog.gd"
+Sfx="*res://scripts/audio/sfx.gd"
 
 [display]
 

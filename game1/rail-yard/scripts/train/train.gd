@@ -70,6 +70,7 @@ var _prev_v: Array = []
 var _joint_f: Array = []
 var _joint_r: Array = []
 var _emit: Array = []
+var _braking := false # squealed for this stop already
 
 func car_len(i: int) -> float:
 	return float(WagonCatalog.entry(cars[i]["type"])["length"])
@@ -263,9 +264,30 @@ func plan(delta: float, net: TrackNetwork, trains: Array) -> float:
 		if _block_timer > _block_wait:
 			direction = -direction
 			_block_timer = 0.0
+			sound_horn()
 	else:
 		_block_timer = 0.0
+	# Brakes squeal once as it pulls up to a stop from speed.
+	var moving := absf(_avg_v())
+	if not _braking and target < 5.0 and moving > 45.0 and not world.is_empty():
+		_braking = true
+		Sfx.play_at("brake", world[lead]["center"], 0.0, randf_range(0.9, 1.1))
+	elif _braking and moving < 5.0:
+		_braking = false
 	return target
+
+## The lead loco's horn or whistle (the catalog's `horn`), if it has one.
+func sound_horn() -> void:
+	if world.is_empty():
+		return
+	var order := range(cars.size())
+	if direction < 0:
+		order.reverse()
+	for i in order:
+		var key: String = WagonCatalog.entry(cars[i]["type"]).get("horn", "")
+		if key != "":
+			Sfx.play_at(key, world[i]["center"], 0.0, randf_range(0.95, 1.05))
+			return
 
 ## The obstacle points (centre, bogies, ends) of every car -- other than
 ## our own leading one -- that could be near any of `pts`.
@@ -405,12 +427,19 @@ func update_visual(delta: float, smoke: Smoke) -> void:
 		var jf := floori((s[i] + b) / JOINT)
 		var jr := floori((s[i] - b) / JOINT)
 		var kick := 14.0 * minf(absf(vi) / 110.0, 1.6)
+		# Every bogie clacking at once is a buzz, not a rhythm; the ends'
+		# bogies alone give the da-dum ... da-dum.
+		var ends := i == 0 or i == world.size() - 1
 		if jf != _joint_f[i]:
 			bounce_v[i] += kick
 			_joint_f[i] = jf
+			if ends:
+				_clack(w["pf"], vi)
 		if jr != _joint_r[i]:
 			bounce_v[i] += kick * 0.8
 			_joint_r[i] = jr
+			if ends:
+				_clack(w["pr"], vi)
 		bounce_v[i] += (-380.0 * bounce[i] - 9.0 * bounce_v[i]) * delta
 		bounce[i] += bounce_v[i] * delta
 		# Pitch: the body tips back when accelerating, forward when braking.
@@ -419,6 +448,15 @@ func update_visual(delta: float, smoke: Smoke) -> void:
 		pitch[i] = lerpf(pitch[i], clampf(-acc * 0.03, -2.5, 2.5), 0.15)
 		if smoke != null:
 			_smoke(i, w, vi, delta, smoke)
+
+## The clickety-clack: a bogie rolling over a rail joint, louder and
+## sharper the faster it goes.
+static func _clack(pos: Vector2, vi: float) -> void:
+	var sp := absf(vi)
+	if sp < 8.0:
+		return
+	var loud := clampf(sp / 140.0, 0.15, 1.2)
+	Sfx.play_at("clack", pos, linear_to_db(loud), randf_range(0.9, 1.05) + sp * 0.0008)
 
 func _smoke(i: int, w: Dictionary, vi: float, delta: float, smoke: Smoke) -> void:
 	var e := WagonCatalog.entry(cars[i]["type"])
@@ -434,6 +472,8 @@ func _smoke(i: int, w: Dictionary, vi: float, delta: float, smoke: Smoke) -> voi
 		while _emit[i] >= 1.0:
 			_emit[i] -= 1.0
 			smoke.puff(stack, car_vel * 0.25, "steam", 0.6 + effort * 0.7)
+			if e.get("chuff", false) and absf(vi) > 4.0:
+				Sfx.play_at("chuff", stack, linear_to_db(0.35 + 0.65 * effort), randf_range(0.92, 1.08))
 	else:
 		_emit[i] += delta * (2.0 + 22.0 * effort)
 		while _emit[i] >= 1.0:

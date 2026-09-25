@@ -9,19 +9,21 @@ extends Node
 ## `powered` cars apply traction, `smoke` picks the exhaust effect and
 ## `stack_x` where on the car (px ahead of its center) it comes out.
 ## `livery` cars take the train's livery colour; the rest keep their own.
+## `horn` is the Sfx a loco sounds when it sets off (see Sfx), and
+## `chuff` locos make a chuff with every exhaust puff.
 
 var art := WagonArt.new()
 
 var CATALOG := {
 	"diesel": {
 		"name": "Diesel", "length": 62.0, "width": 18.0, "mass": 4.0, "powered": true,
-		"smoke": "diesel", "stack_x": -4.0, "livery": true,
+		"smoke": "diesel", "stack_x": -4.0, "livery": true, "horn": "horn",
 		"colors": [Color(0.8, 0.2, 0.17), Color(0.16, 0.34, 0.62), Color(0.93, 0.6, 0.12), Color(0.2, 0.46, 0.3)],
 		"paint": art.diesel,
 	},
 	"steam": {
 		"name": "Steam", "length": 58.0, "width": 18.0, "mass": 4.5, "powered": true,
-		"smoke": "steam", "stack_x": 20.0, "livery": true,
+		"smoke": "steam", "stack_x": 20.0, "livery": true, "horn": "whistle", "chuff": true,
 		"colors": [Color(0.12, 0.36, 0.2), Color(0.5, 0.1, 0.1), Color(0.12, 0.2, 0.42)],
 		"paint": art.steam,
 	},

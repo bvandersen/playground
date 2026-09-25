@@ -44,6 +44,7 @@ var ui: UIRoot
 
 ## Settings (user://settings.json), same meaning as in game2.
 var reset_on_stop: bool = true
+var sound_enabled: bool = true
 var autosave_enabled: bool = false
 var current_slot: String = ""
 
@@ -165,6 +166,10 @@ func set_mode(new_mode: String) -> void:
 		else:
 			mark_dirty()
 	ui.on_mode_changed(mode)
+	if mode == MODE_PLAY:
+		for t in trains:
+			if t.running:
+				t.sound_horn()
 	if mode == MODE_DESIGN:
 		ui.on_selection_changed(selected_train)
 	trains_view.queue_redraw()
@@ -257,12 +262,15 @@ func _flush_autosave() -> void:
 func _load_settings() -> void:
 	var st := SceneStore.load_settings()
 	reset_on_stop = bool(st.get("reset_on_stop", reset_on_stop))
+	sound_enabled = bool(st.get("sound", sound_enabled))
+	Sfx.enabled = sound_enabled
 	autosave_enabled = bool(st.get("autosave", autosave_enabled))
 	current_slot = str(st.get("current_slot", current_slot))
 
 func save_settings() -> void:
 	SceneStore.save_settings({
 		"reset_on_stop": reset_on_stop,
+		"sound": sound_enabled,
 		"autosave": autosave_enabled,
 		"current_slot": current_slot,
 	})
@@ -398,6 +406,7 @@ func place_train_at(p: Vector2) -> void:
 		return
 	push_undo()
 	trains.append(t)
+	Sfx.play_at("couple", t.anchor)
 	set_tool(TOOL_SELECT)
 	select_train(t)
 	mark_dirty()
@@ -405,6 +414,8 @@ func place_train_at(p: Vector2) -> void:
 func remove_train(t: Train) -> void:
 	push_undo()
 	trains.erase(t)
+	if not t.world.is_empty():
+		Sfx.play_at("erase", t.world[0]["center"])
 	if selected_train == t:
 		select_train(null)
 	trains_view.queue_redraw()
@@ -421,6 +432,7 @@ func relay_train(t: Train) -> void:
 			select_train(trains[idx])
 		ui.show_message("That doesn't fit on this track." if not fits else "That would run into another train.")
 		return
+	Sfx.play_at("couple", t.world[t.world.size() - 1]["center"] if not t.world.is_empty() else t.anchor)
 	trains_view.queue_redraw()
 	ui.on_selection_changed(t)
 	mark_dirty()
@@ -471,6 +483,7 @@ func toggle_switch_near(p: Vector2) -> bool:
 	if n == null:
 		return false
 	net.toggle_switch(n)
+	Sfx.play_at("switch", n.position)
 	track_view.queue_redraw()
 	if mode == MODE_DESIGN:
 		mark_dirty()
@@ -684,6 +697,7 @@ func _pointer_up(pos: Vector2) -> void:
 				_undo.pop_back()
 				ui.on_undo_changed(_undo.size())
 				return
+			Sfx.play_at("track", stroke[stroke.size() - 1])
 			_on_tracks_changed()
 		"smooth":
 			if _brush_held < BRUSH_TAP_TIME:
@@ -747,6 +761,8 @@ func _tap(w: Vector2) -> void:
 		var hit := train_at(w)
 		if not hit.is_empty():
 			hit[0].running = not hit[0].running
+			if hit[0].running:
+				hit[0].sound_horn()
 			trains_view.queue_redraw()
 			return
 		toggle_switch_near(w)
@@ -765,6 +781,7 @@ func _tap(w: Vector2) -> void:
 				return
 			push_undo()
 			net.remove_segment(seg_hit["seg"])
+			Sfx.play_at("erase", seg_hit["pos"])
 			_on_tracks_changed()
 		TOOL_TRAIN:
 			place_train_at(w)

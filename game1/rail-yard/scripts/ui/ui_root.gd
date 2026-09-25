@@ -44,6 +44,7 @@ var saves_scroll: ScrollContainer
 var saves_list: VBoxContainer
 var autosave_button: IconButton
 var reset_button: IconButton
+var sound_button: IconButton
 
 var current_train: Train = null
 var _message_time := 0.0
@@ -488,6 +489,13 @@ func _build_menu_sheet() -> void:
 	reset_button.toggled.connect(_on_reset_toggled)
 	toggles.add_child(reset_button)
 
+	sound_button = IconButton.new("sound", "Sounds on or off")
+	sound_button.toggle_mode = true
+	sound_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sound_button.button_pressed = main.sound_enabled
+	sound_button.toggled.connect(_on_sound_toggled)
+	toggles.add_child(sound_button)
+
 func _on_demo_pressed() -> void:
 	main.push_undo()
 	main.load_demo()
@@ -532,6 +540,13 @@ func _on_autosave_toggled(on: bool) -> void:
 
 func _on_reset_toggled(on: bool) -> void:
 	main.reset_on_stop = on
+	main.save_settings()
+
+func _on_sound_toggled(on: bool) -> void:
+	main.sound_enabled = on
+	Sfx.enabled = on
+	if not on:
+		Sfx.stop_all()
 	main.save_settings()
 
 func _refresh_saves() -> void:
