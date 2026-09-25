@@ -2,7 +2,12 @@ extends RefCounted
 class_name LevelCrossing
 
 ## Where a road crosses the track. Found afresh whenever either changes
-## (see Main._find_crossings); nothing about it is saved.
+## (see Main._find_crossings); only its `kind` is saved, by position.
+##
+## `kind` is "level" (a level crossing with barriers), "road_bridge" (the
+## road goes over the railway) or "rail_bridge" (the railway goes over the
+## road); tapping it with the Select tool cycles through them. A bridge
+## has a Deck; nothing waits at a bridge.
 ##
 ## In Play the barriers come down while a train is coming (any car
 ## getting closer and under WARN_TIME away) or standing on the crossing, the
@@ -22,6 +27,27 @@ var road_dir := Vector2.RIGHT # along the road, unit
 var track_dir := Vector2.UP # along the track, unit
 var track_seg: TrackSegment
 var track_u := 0.0
+var road_seg: TrackSegment
+var road_u := 0.0
+var kind := "level"
+var deck: Deck = null
+
+const KINDS := ["level", "road_bridge", "rail_bridge"]
+
+func set_kind(k: String) -> void:
+	kind = k if KINDS.has(k) else "level"
+	deck = null
+	if kind == "road_bridge":
+		deck = Deck.make(pos, road_seg, road_u, track_dir, 16.0, RoadNetwork.HALF_WIDTH * 2.0 + 6.0, false)
+	elif kind == "rail_bridge":
+		deck = Deck.make(pos, track_seg, track_u, road_dir, RoadNetwork.HALF_WIDTH + 3.0, 30.0, true)
+	if deck != null:
+		deck.id = get_instance_id()
+	closed = false
+	bar = 0.0
+
+func next_kind() -> String:
+	return KINDS[(KINDS.find(kind) + 1) % KINDS.size()]
 
 var closed := false
 var want := false # a train is coming (this tick)
@@ -32,14 +58,14 @@ var _last := {} # Train -> its nearest car's distance last tick
 var _bell := 0.0
 
 func blocks_road() -> bool:
-	return closed or bar > 0.4
+	return kind == "level" and (closed or bar > 0.4)
 
 ## First half of a tick: is a train coming? (Main then links crossings
 ## that are close together before `animate`.)
 func sense(trains: Array, playing: bool) -> void:
 	want = false
 	linked = false
-	if playing:
+	if playing and kind == "level":
 		for t in trains:
 			var dmin := INF
 			for w in t.world:
@@ -50,7 +76,7 @@ func sense(trains: Array, playing: bool) -> void:
 				want = true
 
 func animate(delta: float) -> void:
-	closed = want or linked
+	closed = (want or linked) and kind == "level"
 	bar = move_toward(bar, 1.0 if closed else 0.0, delta * BAR_SPEED)
 	time += delta
 	if closed:
@@ -72,6 +98,8 @@ func zone() -> float:
 
 ## Barriers, posts and lights, drawn every frame on top of the road.
 func draw(ci) -> void:
+	if kind != "level":
+		return
 	var off := half_span() + 7.0
 	var hw := RoadNetwork.HALF_WIDTH
 	var flashing := closed or bar > 0.02

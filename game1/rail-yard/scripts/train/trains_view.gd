@@ -11,6 +11,9 @@ class_name TrainsView
 const SUN := Vector2(3.5, 4.5)
 
 var main: Node
+## Two of these are on the layout: the low one draws every car that isn't
+## up on a bridge, the high one (above the bridge decks) the rest.
+var high := false
 ## Every mesh this frame's draw commands point at. Keeping the references
 ## here guarantees none is freed (say, by WagonCatalog trimming its cache)
 ## before the frame has been rendered.
@@ -26,6 +29,8 @@ func _draw() -> void:
 	var held: Array = []
 	for t in trains:
 		for i in range(t.world.size()):
+			if not _mine(t, i):
+				continue
 			var w: Dictionary = t.world[i]
 			var z: float = t.bounce[i]
 			var off: Vector2 = SUN * (1.0 + z * 0.12) + w["n"] * t.sway[i] * 1.1 + w["dir"] * t.pitch[i]
@@ -34,9 +39,12 @@ func _draw() -> void:
 			draw_mesh(shadow, null, Transform2D((w["dir"] as Vector2).angle(), w["center"] + off))
 	if playing:
 		for t in trains:
-			_draw_headlights(t)
+			if not t.world.is_empty() and _mine(t, 0):
+				_draw_headlights(t)
 	for t in trains:
 		for i in range(t.world.size()):
+			if not _mine(t, i):
+				continue
 			var w: Dictionary = t.world[i]
 			var bogie := WagonCatalog.bogie_mesh(w["width"])
 			held.append(bogie)
@@ -51,6 +59,8 @@ func _draw() -> void:
 		draw_mesh(coupler_mesh, null)
 	for t in trains:
 		for i in range(t.world.size()):
+			if not _mine(t, i):
+				continue
 			var w: Dictionary = t.world[i]
 			var sc: float = 1.0 + t.bounce[i] * 0.012
 			var center: Vector2 = w["center"] + w["n"] * t.sway[i] * 0.35
@@ -58,6 +68,8 @@ func _draw() -> void:
 			held.append(body)
 			draw_mesh(body, null, Transform2D((w["dir"] as Vector2).angle(), Vector2(sc, sc), 0.0, center))
 	_held = held
+	if high:
+		return
 	for t in trains:
 		if not t.running and not t.world.is_empty() and t.has_power():
 			_draw_stopped_marker(t)
@@ -65,9 +77,15 @@ func _draw() -> void:
 	if sel != null and not playing and not sel.world.is_empty():
 		_draw_selection(WagonCatalog.art, sel)
 
+func _mine(t, i: int) -> bool:
+	var up: bool = i < t.high.size() and t.high[i]
+	return up == high
+
 func _draw_couplers(b: TriBatch, t) -> void:
 	var w: Array = t.world
 	for i in range(w.size() - 1):
+		if not _mine(t, i):
+			continue
 		var a: Vector2 = w[i]["back"] + w[i]["n"] * t.sway[i] * 0.35
 		var c: Vector2 = w[i + 1]["front"] + w[i + 1]["n"] * t.sway[i + 1] * 0.35
 		b.draw_line(a, c, Color(0.08, 0.08, 0.09), 3.0, true)

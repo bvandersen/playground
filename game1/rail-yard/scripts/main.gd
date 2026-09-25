@@ -44,6 +44,11 @@ var stations: Array = []
 var vehicles: Array = []
 var buildings: Array = []
 var crossings: Array = [] # LevelCrossing, found afresh when track or roads change
+var track_crossings: Array = [] # TrackCrossing, likewise
+var decks: Array = [] # every bridge's Deck (see _find_crossings)
+## Bridge kinds to keep across edits and loads: [[pos, kind, upper dir]].
+var _kept_kinds: Array = []
+var _passing := {} # sound bookkeeping: what's rolling over what (see _feature_sounds)
 var build_kind := "house"
 var selected_train: Train = null
 ## Camera follows this train while it's set; any manual pan/zoom lets go.
@@ -55,6 +60,10 @@ var track_view: TrackView
 var road_view: RoadView
 var buildings_view: BuildingsView
 var vehicles_view: VehiclesView
+var bridges_view: BridgesView
+var vehicles_high_view: VehiclesView
+var trains_high_view: TrainsView
+var hills_view: HillsView
 var stations_view: StationsView
 var people_view: PeopleView
 var trains_view: TrainsView
@@ -91,6 +100,8 @@ var _brush_held := 0.0 # s; a short press without moving is a tap, not brushing
 func _ready() -> void:
 	randomize()
 	_load_settings()
+	Train.line_of = line_of
+	Sfx.muffle = in_tunnel
 
 	ground = Ground.new()
 	add_child(ground)
@@ -115,7 +126,24 @@ func _ready() -> void:
 	trains_view = TrainsView.new()
 	trains_view.main = self
 	add_child(trains_view)
+	# Bridge decks, then whatever is up on them, then the mountains over
+	# everything that goes through a tunnel.
+	bridges_view = BridgesView.new()
+	bridges_view.main = self
+	add_child(bridges_view)
+	vehicles_high_view = VehiclesView.new()
+	vehicles_high_view.main = self
+	vehicles_high_view.high = true
+	add_child(vehicles_high_view)
+	trains_high_view = TrainsView.new()
+	trains_high_view.main = self
+	trains_high_view.high = true
+	add_child(trains_high_view)
+	hills_view = HillsView.new()
+	hills_view.main = self
+	add_child(hills_view)
 	smoke = Smoke.new()
+	smoke.mask = in_tunnel
 	add_child(smoke)
 	overlay = DrawOverlay.new()
 	add_child(overlay)
@@ -153,6 +181,11 @@ func _notification(what: int) -> void:
 			_flush_autosave()
 
 func _process(delta: float) -> void:
+	# What's up on a bridge can change with any move or edit; the upper
+	# views are cheap, so they simply redraw every frame.
+	_update_levels()
+	trains_high_view.queue_redraw()
+	vehicles_high_view.queue_redraw()
 	if follow_train != null:
 		if not trains.has(follow_train) or follow_train.world.is_empty():
 			follow_train = null
@@ -192,6 +225,7 @@ func _physics_process(delta: float) -> void:
 		c.animate(delta)
 	if not crossings.is_empty() or playing:
 		vehicles_view.queue_redraw()
+		vehicles_high_view.queue_redraw()
 	if not playing:
 		return
 	for veh in vehicles:
@@ -204,7 +238,58 @@ func _physics_process(delta: float) -> void:
 	for t in trains:
 		t.update_world()
 		t.update_visual(delta, smoke)
+	_feature_sounds()
 	trains_view.queue_redraw()
+	trains_high_view.queue_redraw()
+
+## The sounds of rolling over things: the clatter of a diamond crossing
+## under each bogie, the hollow rumble of each car onto a steel bridge,
+## and the whoosh of a train or car diving into a tunnel.
+func _feature_sounds() -> void:
+	var seen := {}
+	for t in trains:
+		for i in range(t.world.size()):
+			var w: Dictionary = t.world[i]
+			for tc in track_crossings:
+				if tc.kind != "diamond":
+					continue
+				for b in ["pf", "pr"]:
+					var key := [t, i, b, tc]
+					var near: bool = (w[b] as Vector2).distance_to(tc.pos) < 7.0
+					if near and not _passing.has(key):
+						Sfx.play_at("diamond", tc.pos, 0.0, randf_range(0.92, 1.08))
+					if near:
+						seen[key] = true
+			var up: bool = i < t.high.size() and t.high[i]
+			var key_b := [t, i, "bridge"]
+			if up and not _passing.has(key_b):
+				Sfx.play_at("bridge", w["center"], 0.0, randf_range(0.9, 1.1))
+			if up:
+				seen[key_b] = true
+		if not t.world.is_empty():
+			var lead: int = 0 if t.direction > 0 else t.world.size() - 1
+			var key_t := [t, "tunnel"]
+			var inside := in_tunnel(t.world[lead]["front"] if t.direction > 0 else t.world[lead]["back"])
+			if inside and not _passing.has(key_t):
+				Sfx.play_at("tunnel", t.world[lead]["center"])
+				t.sound_horn()
+			if inside:
+				seen[key_t] = true
+	for veh in vehicles:
+		var key_v := [veh, "tunnel"]
+		var inside := in_tunnel(veh.pos + veh.dir * veh.length() * 0.5)
+		if inside and not _passing.has(key_v):
+			Sfx.play_at("tunnel", veh.pos, -6.0, randf_range(1.2, 1.4))
+		if inside:
+			seen[key_v] = true
+	_passing = seen
+
+## True if `p` is inside a mountain (so in a tunnel, if it's on a line).
+func in_tunnel(p: Vector2) -> bool:
+	for b in buildings:
+		if b.is_tunnel() and b.inside(p):
+			return true
+	return false
 
 # --- Modes & tools -------------------------------------------------------
 
@@ -253,7 +338,21 @@ func capture_state() -> Dictionary:
 		"roads": roads.to_dict(),
 		"vehicles": vehicles.map(func(v): return v.to_dict()),
 		"buildings": buildings.map(func(b): return b.to_dict()),
+		"bridges": _bridge_list(),
 	}
+
+## Every crossing that isn't the plain default, for saving.
+func _bridge_list() -> Array:
+	var out := []
+	for c in crossings + track_crossings:
+		if c.kind != c.KINDS[0]:
+			var d := {"x": snappedf(c.pos.x, 0.01), "y": snappedf(c.pos.y, 0.01), "kind": c.kind}
+			if c is TrackCrossing:
+				var u: Vector2 = c.upper_dir()
+				d["ux"] = snappedf(u.x, 0.0001)
+				d["uy"] = snappedf(u.y, 0.0001)
+			out.append(d)
+	return out
 
 func apply_state(state: Dictionary) -> void:
 	_cancel_gesture()
@@ -278,6 +377,13 @@ func apply_state(state: Dictionary) -> void:
 			if st.resolve(net):
 				st.populate()
 				stations.append(st)
+	_kept_kinds = []
+	crossings.clear()
+	track_crossings.clear()
+	for bd in state.get("bridges", []):
+		if bd is Dictionary:
+			_kept_kinds.append([Vector2(float(bd.get("x", 0.0)), float(bd.get("y", 0.0))), str(bd.get("kind", "")),
+				Vector2(float(bd.get("ux", 0.0)), float(bd.get("uy", 0.0)))])
 	trains.clear()
 	selected_train = null
 	for td in state.get("trains", []):
@@ -294,6 +400,8 @@ func _redraw_world() -> void:
 	road_view.queue_redraw()
 	buildings_view.queue_redraw()
 	vehicles_view.queue_redraw()
+	vehicles_high_view.queue_redraw()
+	trains_high_view.queue_redraw()
 	stations_view.queue_redraw()
 	people_view.queue_redraw()
 	var clear_of := PackedVector2Array()
@@ -307,9 +415,14 @@ func _redraw_world() -> void:
 	ground.rebuild(net, clear_of)
 	trains_view.queue_redraw()
 
-## Every place a road crosses the track.
+## Every place a road crosses the track, or track crosses track. Each
+## keeps the kind (level / bridge) it had before, matched by position.
 func _find_crossings() -> void:
+	for c in crossings + track_crossings:
+		if c.kind != c.KINDS[0]:
+			_kept_kinds.append([c.pos, c.kind, c.upper_dir() if c is TrackCrossing else Vector2.ZERO])
 	crossings.clear()
+	track_crossings.clear()
 	for rs in roads.segments:
 		for ts in net.segments:
 			for hit in TrackNetwork.crossings(rs, ts):
@@ -319,7 +432,106 @@ func _find_crossings() -> void:
 				c.track_dir = ts.tangent_at(hit[2])
 				c.track_seg = ts
 				c.track_u = hit[2]
+				c.road_seg = rs
+				c.road_u = hit[1]
 				crossings.append(c)
+	var segs: Array = net.segments
+	for i in range(segs.size()):
+		for j in range(i, segs.size()):
+			var hits: Array = TrackNetwork.self_crossings(segs[i]) if i == j else TrackNetwork.crossings(segs[i], segs[j])
+			for hit in hits:
+				if net.node_near(hit[0], 30.0) != null:
+					continue # branches meeting at a switch, not crossing
+				var tc := TrackCrossing.new()
+				tc.pos = hit[0]
+				tc.a_seg = segs[i]
+				tc.a_u = hit[1]
+				tc.a_dir = segs[i].tangent_at(hit[1])
+				tc.b_seg = segs[j]
+				tc.b_u = hit[2]
+				tc.b_dir = segs[j].tangent_at(hit[2])
+				track_crossings.append(tc)
+	for k in _kept_kinds:
+		var best = null
+		var best_d := 24.0
+		for c in crossings + track_crossings:
+			var d: float = c.pos.distance_to(k[0])
+			if d < best_d:
+				best_d = d
+				best = c
+		if best == null:
+			continue
+		if best is TrackCrossing and k[1] != "diamond" and (k[2] as Vector2) != Vector2.ZERO:
+			best.set_upper(k[2])
+		else:
+			best.set_kind(k[1])
+	_kept_kinds = []
+	_refresh_decks()
+
+func _refresh_decks() -> void:
+	decks.clear()
+	for c in crossings + track_crossings:
+		if c.deck != null:
+			decks.append(c.deck)
+	_update_levels()
+	bridges_view.queue_redraw()
+	hills_view.queue_redraw()
+
+## Which line (and so which level) something at `p` heading `dir` is on
+## near a bridge: +id upper, -id lower, 0 nowhere near one (Deck.line_of).
+func line_of(p: Vector2, dir: Vector2) -> int:
+	for d in decks:
+		var l: int = d.line_of(p, dir)
+		if l != 0:
+			return l
+	return 0
+
+## Marks every train car and vehicle that's up on a bridge deck, so the
+## views draw it above what passes underneath.
+func _update_levels() -> void:
+	for t in trains:
+		var high := []
+		for w in t.world:
+			var up := false
+			for d in decks:
+				if d.rail and d.carries(w["center"], w["dir"], w["len"]):
+					up = true
+					break
+			high.append(up)
+		t.high = high
+	for veh in vehicles:
+		var up := false
+		for d in decks:
+			if not d.rail and d.carries(veh.pos, veh.dir, veh.length() + (40.0 if veh.has_trailer else 0.0)):
+				up = true
+				break
+		if veh.high != up and mode == MODE_PLAY and veh.is_placed():
+			Sfx.play_at("joint", veh.pos, 0.0, randf_range(0.9, 1.1))
+		veh.high = up
+
+## Taps with the Select tool on a crossing cycle what kind it is.
+func cycle_crossing_near(p: Vector2) -> bool:
+	var best = null
+	var best_d := maxf(18.0, TAP_PX * 0.9 / camera.zoom.x)
+	for c in crossings + track_crossings:
+		var d: float = c.pos.distance_to(p)
+		if d < best_d:
+			best_d = d
+			best = c
+	if best == null:
+		return false
+	push_undo()
+	best.set_kind(best.next_kind())
+	_refresh_decks()
+	road_view.queue_redraw()
+	track_view.queue_redraw()
+	Sfx.play_at("construct", best.pos)
+	var names := {"level": "Level crossing", "road_bridge": "Road bridge over the railway",
+		"rail_bridge": "Railway bridge over the road", "diamond": "Diamond crossing: trains take turns",
+		"a_over": "Flyover: one line on a bridge", "b_over": "Flyover: the other line on top"}
+	ui.show_message(names.get(best.kind, best.kind) + ". Tap again to change it.", 2.5)
+	mark_dirty()
+	return true
 
 func push_undo() -> void:
 	_undo.append(capture_state())
@@ -439,6 +651,17 @@ func load_demo() -> void:
 	# Siding curving into the middle of the oval.
 	net.add_stroke(rot * _smooth_path([Vector2(-170, r), Vector2(-110, r - 22), Vector2(-60, r - 60),
 		Vector2(-30, r - 110), Vector2(-20, r - 160)]), 20.0)
+	# A cross-country line straight over the top of it all (in the world's
+	# own frame): over the oval on a flyover at one side, across it on a
+	# diamond at the other, over the high street on a railway bridge and
+	# under the back road.
+	net.add_stroke(_smooth_path([Vector2(-500, -205), Vector2(560, -205)]), 20.0)
+	crossings.clear()
+	track_crossings.clear()
+	_kept_kinds = [
+		[Vector2(150, -205), "a_over", Vector2.RIGHT], [Vector2(-150, -205), "diamond", Vector2.ZERO],
+		[Vector2(380, -205), "rail_bridge", Vector2.ZERO], [Vector2(-420, -205), "road_bridge", Vector2.ZERO],
+	]
 
 	# A station on each long side: outside the oval at the bottom, inside it
 	# at the top (the passing loop is outside there).
@@ -456,6 +679,8 @@ func load_demo() -> void:
 	var specs := [
 		[Vector2(-40, -r), Vector2.LEFT, ["steam", "tender", "coach", "coach", "coach"], Color(0.12, 0.36, 0.2), 105.0],
 		[Vector2(120, r), Vector2.RIGHT, ["diesel", "boxcar", "tanker", "hopper", "logs", "container", "caboose"], Color(0.8, 0.2, 0.17), 80.0],
+		# The shuttle on the cross-country line (world (-230, -205), heading east).
+		[Vector2(-205, 230), Vector2.UP, ["diesel", "container", "tanker", "container"], Color(0.16, 0.34, 0.62), 70.0],
 	]
 	for spec in specs:
 		var t := Train.new()
@@ -501,7 +726,7 @@ func _load_demo_town() -> void:
 		["shop", Vector2(-470, -140)],
 		# Country: a farm, woods, a pond, trees and flowers.
 		["farm", Vector2(-580, -270)], ["forest", Vector2(-20, -610)], ["forest", Vector2(560, -560)],
-		["pond", Vector2(-290, -300)], ["pond", Vector2(-40, 150)], ["flowers", Vector2(0, -428)],
+		["pond", Vector2(-290, -300)], ["pond", Vector2(-40, 150)], ["flowers", Vector2(-600, 180)], ["mountain", Vector2(0, -330)],
 		["flowers", Vector2(-600, -60)], ["tree", Vector2(250, -300)], ["tree", Vector2(270, -380)],
 		["tree", Vector2(60, -150)], ["tree", Vector2(-560, 60)], ["tree", Vector2(240, 420)],
 		["tree", Vector2(-80, 330)], ["tree", Vector2(-260, -410)], ["forest", Vector2(-640, 520)],
@@ -556,6 +781,8 @@ func clear_all() -> void:
 	trains.clear()
 	stations.clear()
 	vehicles.clear()
+	crossings.clear()
+	track_crossings.clear()
 	buildings.clear()
 	select_train(null)
 	_redraw_world()
@@ -744,6 +971,8 @@ func place_building_at(p: Vector2, kind: String) -> void:
 ## True if `b` would sit on track, a road, a station or another building
 ## (`me` is ignored). Scenery may overlap other scenery.
 func _building_blocked(b: Building, me) -> bool:
+	if b.is_tunnel():
+		return _mountain_blocked(b, me)
 	var ground_only := b.layer() != 1
 	for q in b.footprint():
 		if not net.nearest(q, 17.0).is_empty():
@@ -756,23 +985,47 @@ func _building_blocked(b: Building, me) -> bool:
 		for o in buildings:
 			if o == me or o == b:
 				continue
+			if o.is_tunnel():
+				# Only trees may grow on a mountain.
+				if b.layer() != 2 and o.inside(q):
+					return true
+				continue
 			if ground_only and o.layer() != 1:
 				continue
 			if o.contains(q, -1.0):
 				return true
 	# Nothing of the other one poking into this one either.
 	for o in buildings:
-		if o == me or o == b or (ground_only and o.layer() != 1):
+		if o == me or o == b or o.is_tunnel() or (ground_only and o.layer() != 1):
 			continue
 		for q in o.footprint():
 			if b.contains(q, -1.0):
 				return true
 	return false
 
+## A mountain goes over track and roads (they tunnel through it) and
+## trees, but not over stations, buildings, fields or ponds.
+func _mountain_blocked(b: Building, me) -> bool:
+	for q in b.footprint(16.0):
+		if not b.inside(q):
+			continue
+		for st in stations:
+			if st.contains(q, 2.0):
+				return true
+		for o in buildings:
+			if o != me and o != b and not o.is_tunnel() and o.layer() != 2 and o.contains(q):
+				return true
+	for o in buildings:
+		if o != me and o != b and not o.is_tunnel() and o.layer() != 2:
+			for q in o.footprint():
+				if b.inside(q):
+					return true
+	return false
+
 func building_at(p: Vector2) -> Building:
 	var best: Building = null
 	for b in buildings:
-		if b.contains(p, 2.0) and (best == null or b.layer() >= best.layer()):
+		if b.inside(p) and (best == null or b.layer() >= best.layer()):
 			best = b
 	return best
 
@@ -1176,7 +1429,7 @@ func _tap(w: Vector2) -> void:
 		return
 	match tool:
 		TOOL_SELECT:
-			if not toggle_switch_near(w):
+			if not cycle_crossing_near(w) and not toggle_switch_near(w):
 				select_train(null)
 		TOOL_ERASE:
 			var hit := train_at(w)

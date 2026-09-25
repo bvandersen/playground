@@ -492,3 +492,57 @@ func flowers(ci, _xf: Transform2D, w: float, d: float, _col: Color, seed: int) -
 		for j in range(5):
 			ci.draw_circle(p + Vector2.from_angle(j * TAU / 5.0) * 0.9, 0.75, c)
 		ci.draw_circle(p, 0.5, Color(1.0, 0.85, 0.3) if c != cols[1] else Color(0.6, 0.35, 0.1))
+
+# --- Mountains ---------------------------------------------------------------
+
+## A mountain's outline in its own frame: a lumpy oval inside `w` x `d`,
+## the same for the same seed (tunnel portals are put where lines cross it).
+static func hill_outline(w: float, d: float, seed: int, scale: float = 1.0) -> PackedVector2Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed
+	var ph := [rng.randf() * TAU, rng.randf() * TAU, rng.randf() * TAU]
+	var pts := PackedVector2Array()
+	for i in range(48):
+		var a := i * TAU / 48.0
+		var f := 0.9 + 0.06 * sin(3.0 * a + ph[0]) + 0.035 * sin(5.0 * a + ph[1]) + 0.02 * sin(9.0 * a + ph[2])
+		pts.append(Vector2(cos(a) * w * 0.5, sin(a) * d * 0.5) * f * scale)
+	return pts
+
+## Rings of rising ground from wooded slopes up to a snowy top, each
+## shifted towards the light so the far side falls into shade.
+func mountain(ci, _xf: Transform2D, w: float, d: float, _col: Color, seed: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed
+	var base := hill_outline(w, d, seed)
+	var shadow := PackedVector2Array()
+	for p in base:
+		shadow.append(p + sun * 3.0)
+	ci.draw_colored_polygon(shadow, Color(0, 0, 0, 0.3))
+	var bands := [Color(0.24, 0.4, 0.2), Color(0.3, 0.46, 0.22), Color(0.42, 0.5, 0.28),
+		Color(0.5, 0.46, 0.38), Color(0.6, 0.58, 0.55), Color(0.93, 0.94, 0.97)]
+	var peak := -sun.normalized() * minf(w, d) * 0.08
+	for k in range(bands.size()):
+		var sc := 1.0 - k * 0.15
+		var off := peak * (k / float(bands.size() - 1))
+		var ring := PackedVector2Array()
+		var dark := PackedVector2Array()
+		for p in hill_outline(w, d, seed, sc):
+			ring.append(p + off)
+			dark.append(p + off + sun * 0.5)
+		if k > 0:
+			ci.draw_colored_polygon(dark, (bands[k - 1] as Color).darkened(0.22))
+		ci.draw_colored_polygon(ring, bands[k])
+		if k == 0:
+			# Woods on the lower slopes, rocks higher up.
+			for _i in range(30):
+				var a := rng.randf() * TAU
+				var r := rng.randf_range(0.72, 0.9)
+				var q := Vector2(cos(a) * w * 0.5, sin(a) * d * 0.5) * r * 0.9
+				tree(ci, q, rng.randf_range(5.0, 8.0), "pine" if rng.randf() < 0.6 else "round", rng.randf())
+		elif k == 3:
+			for _i in range(14):
+				var a := rng.randf() * TAU
+				var q := off + Vector2(cos(a) * w * 0.5, sin(a) * d * 0.5) * 0.5 * rng.randf_range(0.8, 1.05)
+				ci.draw_circle(q + sun * 0.3, 2.4, Color(0, 0, 0, 0.18))
+				ci.draw_circle(q, 2.2, Color(0.55, 0.53, 0.5))
+				ci.draw_circle(q - sun.normalized() * 0.8, 1.0, Color(0.7, 0.68, 0.65))

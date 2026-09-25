@@ -464,6 +464,22 @@ func _try_merge(node: TrackNode) -> void:
 
 # --- Geometry helpers ------------------------------------------------------
 
+## Where a piece crosses itself (a figure of eight drawn in one go):
+## [[point, u, u], ...] with the two u's where it passes.
+static func self_crossings(a: TrackSegment) -> Array:
+	var out := []
+	var pa := a.points
+	for i in range(1, pa.size()):
+		for j in range(i + 3, pa.size()):
+			var hit = Geometry2D.segment_intersects_segment(pa[i - 1], pa[i], pa[j - 1], pa[j])
+			if hit == null:
+				continue
+			var p: Vector2 = hit
+			if not out.is_empty() and (out[out.size() - 1][0] as Vector2).distance_to(p) < 4.0:
+				continue
+			out.append([p, a.cum[i - 1] + pa[i - 1].distance_to(p), a.cum[j - 1] + pa[j - 1].distance_to(p)])
+	return out
+
 ## Where two pieces cross: [[point, u along a, u along b], ...]. Used for
 ## road crossroads and for level crossings between a road and the track.
 static func crossings(a: TrackSegment, b: TrackSegment) -> Array:

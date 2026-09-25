@@ -58,6 +58,11 @@ var route: Route = null
 var s: Array = [] # car centres along the route, car 0 highest
 var v: Array = []
 var world: Array = [] # per car: {center, dir, n, pf, pr, tf, tr, len, width}
+var high: Array = [] # per car: up on a bridge deck (drawn above what's under it)
+## Set by Main: which line/level a point heading some way is on near a
+## bridge (+id upper, -id lower, 0 not near one). Trains on different
+## levels of a flyover don't wait for each other.
+static var line_of: Callable
 var throttle: float = 0.0
 var limited := false # braking for a buffer or another train
 var _block_timer := 0.0
@@ -294,13 +299,17 @@ func plan(delta: float, net: TrackNetwork, trains: Array, stations: Array = []) 
 	var free: float = look["dead"] - 6.0
 	var pts: PackedVector2Array = look["points"]
 	var by_train := false
+	var by_crossing := false
 	var near := _cars_near(pts, trains, lead)
 	for k in range(pts.size()):
 		if k * PEEK_STEP >= free:
 			break
-		if _blocked_at(pts[k], near):
+		var pdir := pts[mini(k + 1, pts.size() - 1)] - pts[maxi(k - 1, 0)]
+		var hit := _blocked_at(pts[k], pdir, near)
+		if hit != 0:
 			free = k * PEEK_STEP - 10.0
 			by_train = true
+			by_crossing = hit == 2
 			break
 	var target := speed
 	if free < INF:
@@ -320,6 +329,10 @@ func plan(delta: float, net: TrackNetwork, trains: Array, stations: Array = []) 
 			# Nose to nose, both trains would otherwise back off at the same
 			# instant and meet again; a random wait lets one go first.
 			_block_wait = REVERSE_WAIT + (randf() * 2.5 if by_train else 0.0)
+		if by_crossing:
+			# Waiting for a train to clear a diamond crossing: it will, so
+			# don't give up and reverse (unless it really is stuck).
+			_block_wait = maxf(_block_wait, 12.0)
 		_block_timer += delta
 		if _block_timer > _block_wait:
 			direction = -direction
@@ -417,15 +430,29 @@ func _cars_near(pts: PackedVector2Array, trains: Array, own_lead: int) -> Array:
 			var car: Dictionary = w[i]
 			# All five points lie within half a car length of the centre.
 			if box.grow(car["len"] * 0.5 + BLOCK_RADIUS + 1.0).has_point(car["center"]):
-				out.append(PackedVector2Array([car["center"], car["pf"], car["pr"], car["front"], car["back"]]))
+				var line := 0
+				if t != self and line_of.is_valid():
+					line = line_of.call(car["center"], car["dir"])
+				out.append([PackedVector2Array([car["center"], car["pf"], car["pr"], car["front"], car["back"]]), line, car["dir"]])
 	return out
 
-static func _blocked_at(p: Vector2, near: Array) -> bool:
-	for car_pts in near:
-		for q in car_pts:
+## 0 if `p` (on this train's path, heading `pdir`) is clear, 1 if a car is
+## there, 2 if that car is crossing our path (a diamond crossing).
+static func _blocked_at(p: Vector2, pdir: Vector2, near: Array) -> int:
+	var line := 0
+	var asked := false
+	for entry in near:
+		for q in entry[0]:
 			if p.distance_squared_to(q) < BLOCK_RADIUS * BLOCK_RADIUS:
-				return true
-	return false
+				if entry[1] != 0:
+					if not asked:
+						line = line_of.call(p, pdir)
+						asked = true
+					if line == -int(entry[1]):
+						break # one over the other on a flyover
+				var d: Vector2 = entry[2]
+				return 2 if absf(d.dot(pdir.normalized())) < 0.6 else 1
+	return 0
 
 func _avg_v() -> float:
 	var m := 0.0

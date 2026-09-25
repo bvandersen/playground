@@ -30,6 +30,8 @@ class Puff:
 const DISC_SIZE := 128
 
 var _puffs: Array = []
+## Set by Main: true where a puff would come out inside a tunnel (it doesn't).
+var mask: Callable
 var _disc: ImageTexture
 
 func _ready() -> void:
@@ -51,6 +53,8 @@ func _disc_at(p: Vector2, r: float, col: Color) -> void:
 	draw_texture_rect(_disc, Rect2(p - Vector2(r, r), Vector2(r, r) * 2.0), false, col)
 
 func puff(pos: Vector2, vel: Vector2, kind: String, strength: float) -> void:
+	if mask.is_valid() and mask.call(pos):
+		return
 	if _puffs.size() >= MAX_PUFFS:
 		_puffs.pop_front()
 	var p := Puff.new()

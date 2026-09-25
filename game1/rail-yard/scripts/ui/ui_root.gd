@@ -12,14 +12,14 @@ const TOP_STRIP_HEIGHT := 52.0
 const SAVE_LIST_MAX_HEIGHT := 160.0
 
 const HINTS := {
-	"select": "Drag a train along its track. Tap a switch to flip it. Drag the ground to pan, pinch or scroll to zoom.",
+	"select": "Drag a train along its track. Tap a switch to flip it. Tap where lines cross to make a bridge. Drag the ground to pan, pinch or scroll to zoom.",
 	"draw": "Drag to lay track. Start or finish on a track to join it -- joining mid-track makes a switch.",
 	"erase": "Tap a piece of track, a train or a station to remove it.",
 	"smooth": "Rub over wobbly track to smooth it out, or tap a piece to smooth all of it.",
 	"train": "Tap a track to put a train on it.",
 	"station": "Tap beside a track to build a station there. Trains with coaches stop to let people off and on.",
 	"road": "Drag to lay a road. Start on a road to branch off it; roads that cross make a crossroads, and a road over the track gets a level crossing.",
-	"build": "Pick something, then tap to put it down. Buildings turn to face the nearest road; cars, lorries and buses go on a road.",
+	"build": "Pick something, then tap to put it down. Buildings face the nearest road; cars, lorries and buses go on a road; put a mountain over a line for a tunnel.",
 	"play": "Tap a train to stop or start it. Tap a switch to flip it. Cars stop at the crossing gates when a train comes.",
 }
 

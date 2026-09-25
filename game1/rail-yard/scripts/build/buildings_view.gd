@@ -10,7 +10,7 @@ var main: Node
 var _mesh: ArrayMesh
 
 func _draw() -> void:
-	var list: Array = main.buildings.duplicate()
+	var list: Array = main.buildings.filter(func(b): return not b.is_tunnel())
 	list.sort_custom(func(a, b): return a.layer() < b.layer() or (a.layer() == b.layer() and a.pos.y < b.pos.y))
 	var b := TriBatch.new()
 	for bl in list:

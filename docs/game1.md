@@ -246,9 +246,62 @@ crossroads/T-junctions, building placement and refusal, vehicle placement,
 erase, undo and a JSON save/load round trip. Screenshots were checked
 under xvfb (`tools/_shot_town.gd`). Not checked on a phone.
 
+## Bridges, tunnels and crossing tracks
+
+Brief (verbatim): "And tunnels and bridges and train crossings. Remember
+to add new sounds to fit".
+
+- **Track crossing track** now makes a proper crossing
+  (`TrackCrossing`, found by `TrackNetwork.crossings` between pieces and
+  `self_crossings` for a figure of eight drawn in one go; crossings within
+  30 px of a switch are branches, not crossings). A **diamond** is flat:
+  trains clatter over it and wait for each other. `Train.plan` tells a car
+  crossing its path (more than ~53° off) from one ahead on its own line,
+  and waits up to 12 s for it instead of giving up and reversing after
+  1.4 s.
+- **Bridges.** With the Select tool, tap where two lines cross to cycle
+  what's built there. Road over track: level crossing → road bridge over
+  the railway → railway bridge over the road. Track over track: diamond →
+  one line on a flyover → the other line on top. Each bridge has a
+  `Deck` (`scripts/road/deck.gd`), which answers the two questions
+  everything else asks: *which line is this on* (`line_of`, by direction
+  near the crossing) and *is this up on the deck* (`carries`). Trains on
+  different levels of a flyover ignore each other (`Train.line_of`); a
+  bridge has no barriers and nobody waits there. Kinds are saved by
+  position (`bridges` in the saved state, with the upper line's direction
+  for a flyover) and kept across edits.
+- **Drawing on two levels.** `TrainsView` and `VehiclesView` each come
+  twice: the low one draws everything not on a deck, then `BridgesView`
+  draws the decks (concrete road bridge with parapets and expansion
+  joints; steel girder railway bridge with its own sleepers and rails;
+  both cast a shadow on what's below), then the high views draw what's up
+  on them. Levels are refreshed every frame (`Main._update_levels`).
+- **Tunnels.** A **Mountain** in the Build palette may be put over track
+  and roads (not over stations, buildings, fields or ponds; trees may grow
+  on it). `HillsView` draws it above everything: rings of wooded slopes,
+  rock and a snowy top, shifted towards the light. It adds a stone portal
+  (face wall, wing walls, keystone, dark arch) wherever a track or road
+  crosses its outline, so trains and cars vanish in and come out the other
+  side. No smoke comes out inside a tunnel, and sounds from inside are
+  muffled (-9 dB, lower pitch).
+- **Demo layout.** A cross-country line runs over the top: a flyover over
+  the oval on one side and a diamond on the other, a railway bridge over
+  the high street, and a road bridge carrying the back road over it; a
+  shuttle freight works it back and forth. A mountain covers the top of
+  the oval, with a tunnel through it.
+
+Verified headless: 180 s of Play in the demo. No two trains ever overlap
+on the diamond. Trains pass over and under each other on the flyover
+without stopping. No vehicle is ever on a level crossing with a train.
+All three trains keep running. Tapping cycles the crossing kinds; kinds
+(and which line is on top) survive a save/load round trip; a mountain can
+go over track and puts it in a tunnel; a one-stroke figure of eight gets
+its diamond. Screenshots of each were checked under xvfb
+(`tools/_shot_series.gd`). Not heard: the container has no audio output.
+
 ## Sound
 
-Twelve short sound effects, made with ElevenLabs' text-to-sound model
+Seventeen short sound effects, made with ElevenLabs' text-to-sound model
 (`eleven_text_to_sound_v2`, through the ElevenLabs MCP connector, flow
 "Rail Yard sound effects"). No sound is synthesised in the game. Each clip
 was decoded, cut to the one event that was wanted, trimmed of silence, given
@@ -270,6 +323,18 @@ a 3 ms fade in and a 40 ms fade out, normalised to -1 dBFS and saved as
 | `tap` | Single crisp wooden block click, short bright UI tap, close-mic | any icon button is pressed |
 | `bell` | Railway level crossing warning bell, a single clear electronic ding, isolated, outdoors | every 0.55 s while a level crossing is closed |
 | `beep` | Small cartoon car horn, two quick friendly beeps, beep beep, isolated, close | a vehicle is put down, or goes first at a junction standoff |
+
+| `tunnel` | Train rushing into a tunnel, sudden whoosh of air with a hollow echoing rumble | a train's front (with its horn), or a car, goes into a tunnel |
+| `bridge` | Single railway wagon rolling onto a steel girder bridge, one deep hollow metallic clang with a short resonant rumble | each car rolling onto a railway bridge or flyover |
+| `diamond` | Train wheels passing over a railway diamond crossing, one quick sharp metallic clack-clack double hit | each bogie over a diamond crossing |
+| `joint` | Car tyres driving over a bridge expansion joint, soft quick double thump, ba-dum | a vehicle driving onto or off a road bridge |
+| `construct` | Short cheerful toy construction sound, three quick wooden hammer taps and a satisfying click | a crossing is turned into a bridge (or back) |
+
+The last five came with bridges and tunnels, two takes each. The kept
+takes: the first tunnel whoosh (cut at 1.9 s), the first bridge clang, the
+clack-clack from inside the second diamond take (the first was a single
+clack), one thump pair from the first joint take, and the second
+construct take.
 
 `bell` and `beep` were added with the roads (flows "level crossing bell"
 and "car horn", two takes each; the first bell take and the second horn

@@ -34,7 +34,8 @@ func _draw() -> void:
 	for seg in roads.segments:
 		_draw_lines(seg)
 	for c in main.crossings:
-		_draw_crossing(c)
+		if c.kind == "level":
+			_draw_crossing(c)
 	_mesh = _b.to_mesh()
 	if _mesh != null:
 		draw_mesh(_mesh, null)
@@ -81,7 +82,7 @@ func _draw_lines(seg: TrackSegment) -> void:
 
 func _near_crossing(p: Vector2, crossings: Array) -> bool:
 	for c in crossings:
-		if p.distance_to(c.pos) < c.half_span() + 3.0:
+		if c.kind == "level" and p.distance_to(c.pos) < c.half_span() + 3.0:
 			return true
 	return false
 

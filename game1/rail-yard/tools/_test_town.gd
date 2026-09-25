@@ -6,6 +6,8 @@ var frame := 0
 var closed_seen := 0
 var min_gap := INF
 var danger := 0
+var diamond_hits := 0
+var flyover_passes := 0
 
 func _initialize() -> void:
 	main = load("res://Main.tscn").instantiate()
@@ -19,6 +21,7 @@ func _process(_delta: float) -> bool:
 			if n.ports.size() >= 3:
 				junc += 1
 		print("roads: ", main.roads.segments.size(), " segs, ", junc, " junctions; crossings: ", main.crossings.size())
+		print("crossing kinds: ", main.crossings.map(func(c): return c.kind), " track crossings: ", main.track_crossings.map(func(c): return c.kind), " decks: ", main.decks.size())
 		print("buildings: ", main.buildings.size(), " vehicles: ", main.vehicles.size(), " trains: ", main.trains.size())
 		var kinds := {}
 		for b in main.buildings:
@@ -29,8 +32,24 @@ func _process(_delta: float) -> bool:
 		for c in main.crossings:
 			if c.closed:
 				closed_seen += 1
+		# Two trains' cars on top of each other at a diamond (bad) or a
+		# flyover (fine: one is over the other)?
+		for tc in main.track_crossings:
+			for ta in main.trains:
+				for tb in main.trains:
+					if ta.get_instance_id() >= tb.get_instance_id():
+						continue
+					for wa in ta.world:
+						for wb in tb.world:
+							if (wa["center"] as Vector2).distance_to(tc.pos) < 20.0 and (wb["center"] as Vector2).distance_to(tc.pos) < 20.0:
+								if tc.kind == "diamond":
+									diamond_hits += 1
+								else:
+									flyover_passes += 1
 		# A vehicle on a crossing while a train is on it too?
 		for c in main.crossings:
+			if c.kind != "level":
+				continue
 			var train_on := false
 			for t in main.trains:
 				for w in t.world:
@@ -53,8 +72,8 @@ func _process(_delta: float) -> bool:
 			if v.v < 1.0:
 				stopped += 1
 		why()
-		print("t=%ds speeds=%s stopped=%d closed-frames=%d min-gap=%.1f danger=%d train v=%.0f/%.0f" % [frame / 60, sp, stopped, closed_seen, min_gap, danger, main.trains[0]._avg_v(), main.trains[1]._avg_v()])
-	return frame > 60 * 90
+		print("t=%ds speeds=%s stopped=%d closed-frames=%d min-gap=%.1f danger=%d diamond-hits=%d flyover-passes=%d train v=%.0f/%.0f/%.0f" % [frame / 60, sp, stopped, closed_seen, min_gap, danger, diamond_hits, flyover_passes, main.trains[0]._avg_v(), main.trains[1]._avg_v(), main.trains[2]._avg_v()])
+	return frame > 60 * 180
 
 func why() -> void:
 	for v in main.vehicles:

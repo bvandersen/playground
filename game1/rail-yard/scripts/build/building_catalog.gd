@@ -8,7 +8,9 @@ extends Node
 ##
 ## `size` is the footprint (frontage x depth) in px. `layer` sets what's
 ## drawn over what: 0 lies flat on the ground (fields, ponds, meadows),
-## 1 is buildings, 2 is trees, which stand over everything. `faces_road`
+## 1 is buildings, 2 is trees, which stand over everything but 3: a
+## `tunnel` mountain, which may be put over track and roads and hides
+## whatever goes through it (HillsView draws it above the trains). `faces_road`
 ## things turn to face the nearest road and sit back from its kerb.
 ## `smoke` things puff from their chimney in Play.
 
@@ -31,6 +33,7 @@ var CATALOG := {
 	"tree": {"name": "Tree", "size": Vector2(34, 34), "layer": 2, "faces_road": false, "colors": [Color.WHITE], "paint": art.one_tree},
 	"forest": {"name": "Woods", "size": Vector2(130, 116), "layer": 2, "faces_road": false, "colors": [Color.WHITE], "paint": art.forest},
 	"pond": {"name": "Pond", "size": Vector2(96, 68), "layer": 0, "faces_road": false, "colors": [Color.WHITE], "paint": art.pond},
+	"mountain": {"name": "Mountain", "size": Vector2(240, 190), "layer": 3, "faces_road": false, "tunnel": true, "colors": [Color.WHITE], "paint": art.mountain},
 	"flowers": {"name": "Flowers", "size": Vector2(64, 46), "layer": 0, "faces_road": false, "colors": [Color.WHITE], "paint": art.flowers},
 }
 

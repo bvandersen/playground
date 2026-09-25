@@ -38,6 +38,7 @@ var cruise := 70.0
 var pos := Vector2.ZERO
 var dir := Vector2.RIGHT
 var braking := false
+var high := false # up on a road bridge (drawn above the railway under it)
 var has_trailer := false
 var trailer_pos := Vector2.ZERO
 var trailer_dir := Vector2.RIGHT
@@ -210,6 +211,8 @@ func drive(delta: float, others: Array, crossings: Array) -> void:
 	# rather than stop on the track between two lines.
 	var on_it := []
 	for c in crossings:
+		if c.kind != "level":
+			continue
 		for p in [lane.point_at(front), pos, lane.point_at(s - half)]:
 			if p.distance_to(c.pos) < c.zone():
 				on_it.append(c)

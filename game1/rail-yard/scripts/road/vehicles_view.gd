@@ -9,6 +9,9 @@ class_name VehiclesView
 const SUN := Vector2(2.6, 3.4)
 
 var main: Node
+## As with TrainsView: the low view draws everything not up on a road
+## bridge (and the level-crossing barriers), the high one the rest.
+var high := false
 var _mesh: ArrayMesh
 var _extra := TriBatch.new()
 
@@ -20,7 +23,7 @@ func _draw() -> void:
 	_extra.clear()
 	var playing: bool = main.mode == main.MODE_PLAY
 	for veh in main.vehicles:
-		if not veh.is_placed():
+		if not veh.is_placed() or veh.high != high:
 			continue
 		var parts := [[veh.pos, veh.dir, false]]
 		if veh.has_trailer:
@@ -52,8 +55,9 @@ func _draw() -> void:
 			for p in [back + side, back - side]:
 				_extra.draw_circle(p - bd * 0.2, 3.4, Color(1.0, 0.1, 0.05, 0.28))
 				_extra.draw_circle(p - bd * 0.2, 1.2, Color(1.0, 0.3, 0.25))
-	for c in main.crossings:
-		c.draw(_extra)
+	if not high:
+		for c in main.crossings:
+			c.draw(_extra)
 	shadows.append_array(bodies)
 	shadow_cols.append_array(body_cols)
 	shadows.append_array(_extra.points)

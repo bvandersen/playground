@@ -55,4 +55,37 @@ func _process(_delta: float) -> bool:
 	main.roads.add_road(TrackNetwork._resample(PackedVector2Array([at + Vector2(-400, 0), at + Vector2(400, 0)]), 8.0), 20.0)
 	main._on_tracks_changed()
 	print("road over buildings: ", nb, " -> ", main.buildings.size())
+	# Bridges: cycle the level crossing, keep it through save/load.
+	main.set_tool(main.TOOL_SELECT)
+	var lc = main.crossings[0]
+	main._tap(lc.pos)
+	print("tap crossing: ", main.crossings[0].kind, " decks ", main.decks.size())
+	main._tap(main.crossings[0].pos)
+	print("tap again: ", main.crossings[0].kind)
+	var st2: Dictionary = JSON.parse_string(JSON.stringify(main.capture_state()))
+	main.apply_state(st2)
+	print("after round trip: ", main.crossings[0].kind, " bridges saved ", st2.get("bridges"))
+	# Track crossing track -> diamond; flyover survives a round trip with the right line on top.
+	main.net.add_stroke(TrackNetwork._resample(PackedVector2Array([Vector2(-300, -150), Vector2(-100, -150)]), 8.0), 20.0)
+	main._on_tracks_changed()
+	print("track crossings: ", main.track_crossings.map(func(c): return c.kind))
+	var tc = main.track_crossings[0]
+	main._tap(tc.pos)
+	var up: Vector2 = main.track_crossings[0].upper_dir()
+	var st3: Dictionary = JSON.parse_string(JSON.stringify(main.capture_state()))
+	main.apply_state(st3)
+	print("flyover kept: ", main.track_crossings[0].kind != "diamond", " same line on top: ", absf(main.track_crossings[0].upper_dir().dot(up)) > 0.9)
+	# A mountain may go over the track.
+	var nm: int = main.buildings.size()
+	main.place_building_at(Vector2(-200, -50), "mountain")
+	print("mountain over track placed: ", main.buildings.size() - nm, " tunnel at track: ", main.in_tunnel(Vector2(-200, -50)))
+	# A figure of eight drawn in one stroke makes a diamond with itself.
+	main.clear_all()
+	var fig := PackedVector2Array()
+	for k in range(0, 200):
+		var a := 0.6 + k * TAU / 199.0
+		fig.append(Vector2(sin(a) * 200.0, sin(2.0 * a) * 90.0))
+	main.net.add_stroke(fig, 20.0)
+	main._on_tracks_changed()
+	print("figure eight crossings: ", main.track_crossings.size())
 	return false

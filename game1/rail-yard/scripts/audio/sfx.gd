@@ -25,6 +25,11 @@ const SOUNDS := {
 	"clack": {"db": -15.0, "gap": 0.04, "max": 4},
 	"bell": {"db": -12.0, "gap": 0.2, "max": 2},
 	"beep": {"db": -10.0, "gap": 0.3, "max": 2},
+	"tunnel": {"db": -6.0, "gap": 0.3, "max": 2},
+	"bridge": {"db": -12.0, "gap": 0.12, "max": 3},
+	"diamond": {"db": -11.0, "gap": 0.05, "max": 3},
+	"joint": {"db": -14.0, "gap": 0.1, "max": 3},
+	"construct": {"db": -5.0, "gap": 0.1, "max": 2},
 }
 const VOICES_2D := 20
 const VOICES_UI := 4
@@ -34,6 +39,8 @@ const VOICES_UI := 4
 const HEAR_SCREEN_PX := 900.0
 
 var enabled := true
+## Set by Main: true where a sound would be inside a tunnel (muffled).
+var muffle: Callable
 
 var _streams := {}
 var _players_2d: Array = []
@@ -73,6 +80,9 @@ func play_at(key: String, pos: Vector2, db: float = 0.0, pitch: float = 1.0) -> 
 		zoom = cam.zoom.x
 	p.global_position = pos
 	p.max_distance = HEAR_SCREEN_PX / maxf(zoom, 0.05)
+	if key != "tunnel" and muffle.is_valid() and muffle.call(pos):
+		db -= 9.0
+		pitch *= 0.92
 	_start(p, key, db, pitch)
 
 ## A free player for `key`, or null if it's too soon or too many are

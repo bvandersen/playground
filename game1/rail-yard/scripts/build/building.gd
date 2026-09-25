@@ -23,6 +23,30 @@ func size() -> Vector2:
 func layer() -> int:
 	return int(BuildingCatalog.entry(kind)["layer"])
 
+func is_tunnel() -> bool:
+	return BuildingCatalog.entry(kind).get("tunnel", false)
+
+var _outline := PackedVector2Array()
+var _outline_key := Vector3.INF
+
+## A mountain's outline in the world (see BuildingArt.hill_outline).
+func outline() -> PackedVector2Array:
+	var key := Vector3(pos.x, pos.y, angle)
+	if key != _outline_key:
+		var sz := size()
+		_outline = xform() * BuildingArt.hill_outline(sz.x, sz.y, seed)
+		_outline_key = key
+	return _outline
+
+## True if `p` is under this mountain (for a building: on its plot).
+func inside(p: Vector2) -> bool:
+	if not is_tunnel():
+		return contains(p)
+	var r := maxf(size().x, size().y) * 0.5
+	if p.distance_squared_to(pos) > r * r:
+		return false
+	return Geometry2D.is_point_in_polygon(p, outline())
+
 func xform() -> Transform2D:
 	return Transform2D(angle, pos)
 
