@@ -206,12 +206,33 @@ jobs:
       # the repo has NETLIFY_AUTH_TOKEN and NETLIFY_SITE_ID secrets; until
       # then this step is skipped. It runs even if the Pages steps above
       # fail, so it keeps deploying if Pages itself is what broke.
+      #
+      # Netlify is unlisted: the whole site sits under a secret path
+      # (the NETLIFY_SECRET_PATH secret), nothing is served at the root,
+      # and nothing (robots.txt, headers, logs) names that path.
       - name: Deploy to Netlify
         if: ${{ !cancelled() && steps.assemble.outcome == 'success' && env.NETLIFY_SITE_ID != '' }}
+        env:
+          SECRET_PATH: ${{ secrets.NETLIFY_SECRET_PATH }}
         run: |
+          if [ -z "$SECRET_PATH" ]; then
+            echo "::warning::NETLIFY_SECRET_PATH is not set; not deploying to Netlify"; exit 0
+          fi
+          if ! [[ "$SECRET_PATH" =~ ^[a-z0-9-]+$ ]]; then
+            echo "::error::NETLIFY_SECRET_PATH must be lowercase letters, digits and dashes"; exit 1
+          fi
+          mkdir _netlify
+          mv _site "_netlify/$SECRET_PATH"
+          printf 'User-agent: *\nDisallow: /\n' > _netlify/robots.txt
           # Netlify's default is max-age=0 (revalidate every load); the
           # engine files never change under a given engine/<version>/ path,
-          # so let a second demo take the wasm straight from cache.
-          printf '/engine/*\n  Cache-Control: public, max-age=86400\n' > _site/_headers
-          npx -y netlify-cli@27 deploy --prod --no-build --dir=_site \
+          # so let a second demo take the wasm straight from cache. The
+          # :dir placeholder keeps the secret out of this file too.
+          printf '%s\n' \
+            '/*' \
+            '  X-Robots-Tag: noindex, nofollow' \
+            '  Referrer-Policy: no-referrer' \
+            '/:dir/engine/*' \
+            '  Cache-Control: public, max-age=86400' > _netlify/_headers
+          npx -y netlify-cli@27 deploy --prod --no-build --dir=_netlify \
             --site "$NETLIFY_SITE_ID" --message "${GITHUB_SHA::7}"

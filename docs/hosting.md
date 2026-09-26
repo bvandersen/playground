@@ -137,7 +137,17 @@ Pages is a separate decision, to be made after trying the Netlify site.
   the assembly instead of before it;
 - it deploys with `npx netlify-cli@27 deploy --prod --no-build --dir=_site`,
   with the short commit SHA as the deploy message;
-- it adds a Netlify `_headers` file giving `/engine/*` a
+- the Netlify site is **unlisted**: all of `_site` is deployed under a
+  secret path, `/<NETLIFY_SECRET_PATH>/` (a repo secret, lowercase
+  letters, digits and dashes; the step skips with a warning while it's
+  unset). The root has no page (Netlify's 404), `robots.txt` is
+  `Disallow: /` without naming the path, every response gets
+  `X-Robots-Tag: noindex, nofollow` and `Referrer-Policy: no-referrer`,
+  and there is no sitemap. The path appears nowhere in the repo, and
+  Actions masks it in logs. `*.netlify.app` uses one wildcard certificate,
+  so certificate-transparency logs don't reveal the site name either.
+  This is obscurity, not access control: anyone given the URL can play;
+- it adds a Netlify `_headers` file giving `/:dir/engine/*` a
   `Cache-Control: public, max-age=86400`. Netlify's default is
   `max-age=0, must-revalidate`, so without this each demo would
   revalidate the ~34 MiB wasm; with it a second demo takes it from
@@ -146,15 +156,20 @@ Pages is a separate decision, to be made after trying the Netlify site.
   paths, so they work at Netlify's site root just as they do under Pages'
   `/playground/` subpath.
 
+Live at `https://baplayground.netlify.app/<secret path>/` (demo list at
+`.../<secret path>/demos/`).
+
 **To switch it on** (about 5 minutes):
 
 1. In Netlify, create a site with *no* Git integration (Add new project
    → Deploy manually, and drop any placeholder folder in). Note its
    **Project ID** (Project configuration → General).
 2. Create a personal access token (User settings → Applications).
-3. Add repo secrets `NETLIFY_AUTH_TOKEN` and `NETLIFY_SITE_ID`, then run
+3. Add repo secrets `NETLIFY_AUTH_TOKEN`, `NETLIFY_SITE_ID` and
+   `NETLIFY_SECRET_PATH`, turn off the team-login protection Netlify puts
+   on new projects (Project configuration → Access & security), then run
    the workflow ("Run workflow" on *Godot demos Pages*) or push.
-4. Check `https://<site>.netlify.app/`, `/demos/`, and that a second
+4. Check `https://<site>.netlify.app/<secret path>/`, `.../demos/`, and that a second
    demo gets `engine/<v>/index.wasm` from cache. Netlify's free plan is
    credit-based (since 2025), so check how much bandwidth a play costs
    before relying on it.
