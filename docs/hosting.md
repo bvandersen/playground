@@ -49,7 +49,7 @@ the pack (`git count-objects -vH`: 8.9 MiB total pack). Each future
 Godot version adds roughly another ~9 MB, once. Not worth changing how
 exports are committed, so there's no phase for it.
 
-## Phase 1 — one shared engine copy in the Pages site (not started)
+## Phase 1 — one shared engine copy in the Pages site (done 2026-09-26)
 
 **Why**: every demo ships its own copy of the same 34 MiB wasm under a
 different URL, so the browser can't reuse it. A player who opens two
@@ -95,6 +95,27 @@ post-export patch; the committed `static/` exports stay as they are):
 
 **Done when**: `_site` is ~36 MB instead of ~104 MB, all three demo URLs
 still boot, and opening a second demo doesn't re-download the wasm.
+
+**As built** (2026-09-26):
+
+- `share_engine()` in the workflow's "Assemble site" step moves every
+  engine file (`index.wasm`, `index.js`, `index.*.js`, which also covers
+  the extra `index.audio.position.worklet.js` that Godot 4.4+ exports) to
+  `_site/engine/<full Godot version>/`. It fails the deploy if a later demo
+  on the same version has a file that isn't byte-identical (`cmp`). The
+  root copy of `ROOT_DEMO` gets the same treatment, with base
+  `engine/<v>/index` instead of `../../engine/<v>/index`.
+- The html patch is `node scripts/game2-postexport.mjs --shared-engine
+  <index.html> <engine-base>`, a separate mode that only runs on `_site`
+  and never touches `static/`.
+- Verified locally on the three committed 4.3 exports, served under
+  `/playground/` with Pages' `Cache-Control: max-age=600`: `_site` is
+  36 MB (was ~104 MB). All four URLs (three demos plus the root) boot in
+  headless Chromium. The wasm comes from `engine/4.3/`, each pck from its
+  own folder, and the 2nd–4th demo get the wasm from the disk cache. After
+  a click, the audio worklet loads from `engine/4.3/` and the
+  AudioContext is running. game3 (4.7) isn't in `static/`, so it was first
+  exercised by the CI run itself.
 
 ## Phase 2 — Netlify standby (write down now, build only if needed)
 

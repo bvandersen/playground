@@ -138,8 +138,35 @@ jobs:
           enablement: true
       - name: Assemble site
         run: |
+          # One shared engine per Godot version (docs/hosting.md, Phase 1):
+          # each demo's index.wasm/index.js/worklets move to
+          # _site/engine/<version>/ (they must be byte-identical across all
+          # demos on that version, or the deploy fails) and its index.html
+          # is repointed there, so a browser downloads the ~34 MiB wasm once
+          # for every demo. Each pck stays in its demo's own folder.
+          share_engine() {  # <demo dir in _site> <demo path from repo root> <prefix up to _site>
+            local d=$1 minor v eng b f
+            minor=$(awk -v d="$2" '$1 == d {print $2}' /tmp/demos.txt)
+            v=$(awk -v m="$minor" '$1 == m {print $2}' /tmp/versions.txt)
+            eng=_site/engine/$v
+            mkdir -p "$eng"
+            for f in "$d"/index.wasm "$d"/index.js "$d"/index.*.js; do
+              [ -f "$f" ] || continue
+              b=$(basename "$f")
+              if [ -f "$eng/$b" ]; then
+                if ! cmp -s "$f" "$eng/$b"; then
+                  echo "::error::$2: $b differs from engine/$v/$b"; exit 1
+                fi
+                rm "$f"
+              else
+                mv "$f" "$eng/$b"
+              fi
+            done
+            node scripts/game2-postexport.mjs --shared-engine "$d/index.html" "$3engine/$v/index"
+          }
           mkdir -p _site/demos
           cp -r "static/${ROOT_DEMO:?}/." _site/
+          share_engine _site "$ROOT_DEMO" ""
           {
             echo '<!doctype html><meta charset="utf-8"><meta name="robots" content="noindex, nofollow">'
             echo '<meta name="viewport" content="width=device-width, initial-scale=1"><title>Demos (unlisted)</title>'
@@ -147,6 +174,7 @@ jobs:
             while read -r dir minor; do
               mkdir -p "_site/$dir"
               cp -r "static/$dir/." "_site/$dir/"
+              share_engine "_site/$dir" "$dir" ../../ >&2
               title=$(grep -oP '^config/name="\K[^"]+' "$dir/project.godot" || echo "$dir")
               echo "<li><a href=\"../$dir/\">$title</a> <small>$dir</small>"
               # A demo may list test links (label<TAB>query per line).
