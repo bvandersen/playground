@@ -114,8 +114,11 @@ still boot, and opening a second demo doesn't re-download the wasm.
   headless Chromium. The wasm comes from `engine/4.3/`, each pck from its
   own folder, and the 2nd–4th demo get the wasm from the disk cache. After
   a click, the audio worklet loads from `engine/4.3/` and the
-  AudioContext is running. game3 (4.7) isn't in `static/`, so it was first
-  exercised by the CI run itself.
+  AudioContext is running.
+- Verified live after the first deploy (run 36255117725): game3/vigil
+  boots from `engine/4.7.2/` and loads both 4.7 worklets from there. On the
+  live site the rail-yard demo gets the 4.3 wasm from cache after
+  bounce-melody, and the old per-demo `index.wasm` URLs now return 404.
 
 ## Phase 2 — Netlify standby (write down now, build only if needed)
 
