@@ -35,7 +35,7 @@ get it through. It's the engine, not our content, so it won't shrink without a c
 | Option | Verdict |
 |---|---|
 | **GitHub Pages** (current) | Already works, deploys on every push to `main`. No per-file limit that matters; 1 GB site limit (we're at ~104 MB); 100 GB/month soft bandwidth ≈ 12,000 first-time plays at ~8 MB each. |
-| Netlify | Works (private repos on the free plan, 100 MB per file). No gain over Pages today → it's the **standby** (Phase 2). Its free plan became credit-based in 2025; check the current bandwidth allowance before relying on it. |
+| Netlify | Works (private repos on the free plan, 100 MB per file). Deploys alongside Pages once its secrets exist (Phase 2); switching over is undecided. Its free plan became credit-based in 2025; check the current bandwidth allowance before relying on it. |
 | Vercel Hobby | Works technically, but Hobby is **non-commercial only**, and Rail Yard is heading to Google Play. Not used. |
 | Firebase Hosting (Spark) | The 2 GB per-file limit doesn't help: the free tier caps downloads at ~360 MB/**day**, which is only about 45 fresh plays a day. Not used. |
 | R2 / S3 / B2 for the wasm | Only needed if the demos must be served from `oraclecardoftheday.com`. That's Phase 3, not now. |
@@ -120,27 +120,49 @@ still boot, and opening a second demo doesn't re-download the wasm.
   live site the rail-yard demo gets the 4.3 wasm from cache after
   bounce-melody, and the old per-demo `index.wasm` URLs now return 404.
 
-## Phase 2 — Netlify standby (write down now, build only if needed)
+## Phase 2 — Netlify alongside Pages (built 2026-09-26, not yet switched on)
 
-**Trigger**: GitHub Pages stops working for this private repo. The
-likeliest cause is the GitHub plan lapsing, since Pages on private repos
-needs a paid plan.
+**Status**: the deploy is in the workflow, but it only runs once the two
+secrets below exist. After that, every push to `main` goes to **both**
+Pages and Netlify from the same `_site`. Whether to switch away from
+Pages is a separate decision, to be made after trying the Netlify site.
 
-**Steps** (about 30 minutes; nothing else in the pipeline changes):
+**As built**: a last step, "Deploy to Netlify", in `game2-pages.yml`
+(one workflow, so the demos are exported once):
 
-1. Create a Netlify site with *no* Git integration (deploys come from
-   Actions), and note its site ID.
-2. Add repo secrets `NETLIFY_AUTH_TOKEN` and `NETLIFY_SITE_ID`.
-3. In `game2-pages.yml`, replace the `configure-pages`,
-   `upload-pages-artifact` and `deploy-pages` steps with
-   `npx netlify-cli deploy --prod --dir=_site` (env: the two secrets),
-   and drop the `pages`/`id-token` permissions and the
-   `environment: github-pages` block.
-4. Update the demo URLs in `docs/game1.md` and `docs/game2.md`.
+- it's skipped while the `NETLIFY_SITE_ID` secret is empty;
+- it runs even if the Pages steps fail (`!cancelled()`, it only needs
+  "Assemble site" to succeed), so it keeps deploying if the thing that
+  broke is Pages. To make that possible, `configure-pages` now runs after
+  the assembly instead of before it;
+- it deploys with `npx netlify-cli@27 deploy --prod --no-build --dir=_site`,
+  with the short commit SHA as the deploy message;
+- it adds a Netlify `_headers` file giving `/engine/*` a
+  `Cache-Control: public, max-age=86400`. Netlify's default is
+  `max-age=0, must-revalidate`, so without this each demo would
+  revalidate the ~34 MiB wasm; with it a second demo takes it from
+  cache, as on Pages (which uses `max-age=600`);
+- nothing else changes: the html patch and the shared engine use relative
+  paths, so they work at Netlify's site root just as they do under Pages'
+  `/playground/` subpath.
 
-Everything else keeps working unchanged: the Godot export, the post-export
-patch and the "Assemble site" step, including Phase 1's shared
-engine. Netlify's 100 MB per-file limit is well above our 34 MiB.
+**To switch it on** (about 5 minutes):
+
+1. In Netlify, create a site with *no* Git integration (Add new project
+   → Deploy manually, and drop any placeholder folder in). Note its
+   **Project ID** (Project configuration → General).
+2. Create a personal access token (User settings → Applications).
+3. Add repo secrets `NETLIFY_AUTH_TOKEN` and `NETLIFY_SITE_ID`, then run
+   the workflow ("Run workflow" on *Godot demos Pages*) or push.
+4. Check `https://<site>.netlify.app/`, `/demos/`, and that a second
+   demo gets `engine/<v>/index.wasm` from cache. Netlify's free plan is
+   credit-based (since 2025), so check how much bandwidth a play costs
+   before relying on it.
+
+**To switch away from Pages** later (only if decided): delete the
+`configure-pages`, `upload-pages-artifact` and `deploy-pages` steps, the
+`pages`/`id-token` permissions and the `environment: github-pages` block,
+then update the demo URLs in `docs/game1.md` and `docs/game2.md`.
 
 ## Phase 3 — demos on the real domain (only if wanted later)
 

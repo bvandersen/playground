@@ -21,6 +21,9 @@
 # source here (nothreads Web templates, cached), so a commit that only
 # changes a demo's source still goes out. Exports committed under
 # static/ are overwritten on the runner by the fresh ones.
+#
+# The same site also deploys to Netlify once the repo has the
+# NETLIFY_AUTH_TOKEN / NETLIFY_SITE_ID secrets (docs/hosting.md, Phase 2).
 
 name: Godot demos Pages
 
@@ -47,6 +50,9 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
@@ -128,15 +134,8 @@ jobs:
             fi
             node scripts/game2-postexport.mjs "$demo" "$game"
           done < /tmp/demos.txt
-      - uses: actions/configure-pages@v5
-        with:
-          # Pages has never been enabled for this repo -- configure-
-          # pages defaults to enablement: false (check-only, fail if
-          # missing), so the very first run needs this explicit true to
-          # create the Pages site itself via the API. Harmless to leave
-          # set on every later run too, once it exists.
-          enablement: true
       - name: Assemble site
+        id: assemble
         run: |
           # One shared engine per Godot version (docs/hosting.md, Phase 1):
           # each demo's index.wasm/index.js/worklets move to
@@ -190,8 +189,29 @@ jobs:
             done < /tmp/demos.txt
             echo '</ul>'
           } > _site/demos/index.html
+      - uses: actions/configure-pages@v5
+        with:
+          # Pages has never been enabled for this repo -- configure-
+          # pages defaults to enablement: false (check-only, fail if
+          # missing), so the very first run needs this explicit true to
+          # create the Pages site itself via the API. Harmless to leave
+          # set on every later run too, once it exists.
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
+      # The same _site also goes to Netlify (docs/hosting.md, Phase 2) once
+      # the repo has NETLIFY_AUTH_TOKEN and NETLIFY_SITE_ID secrets; until
+      # then this step is skipped. It runs even if the Pages steps above
+      # fail, so it keeps deploying if Pages itself is what broke.
+      - name: Deploy to Netlify
+        if: ${{ !cancelled() && steps.assemble.outcome == 'success' && env.NETLIFY_SITE_ID != '' }}
+        run: |
+          # Netlify's default is max-age=0 (revalidate every load); the
+          # engine files never change under a given engine/<version>/ path,
+          # so let a second demo take the wasm straight from cache.
+          printf '/engine/*\n  Cache-Control: public, max-age=86400\n' > _site/_headers
+          npx -y netlify-cli@27 deploy --prod --no-build --dir=_site \
+            --site "$NETLIFY_SITE_ID" --message "${GITHUB_SHA::7}"
